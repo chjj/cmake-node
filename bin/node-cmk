@@ -163,9 +163,7 @@ async function rebuild(options, args) {
 function parseArgs(argv) {
   const options = {
     config: null,
-    cmake: process.platform === 'win32'
-        ? 'cmake.exe'
-        : 'cmake',
+    cmake: findCMake(),
     dist: 'https://nodejs.org/dist',
     root: '.',
     fallback: false,
@@ -555,6 +553,31 @@ function hasExecutable(file) {
   return !result.error && !result.signal && result.status === 0;
 }
 
+function findCMake() {
+  if (process.platform === 'win32') {
+    if (hasExecutable('cmake.exe'))
+      return 'cmake.exe';
+
+    const paths = [
+      '\\Program Files\\CMake\\bin\\cmake.exe',
+      '\\Program Files (x86)\\CMake\\bin\\cmake.exe'
+    ];
+
+    for (const path_ of paths) {
+      try {
+        fs.statSync(path_);
+        return path_;
+      } catch (e) {
+        ;
+      }
+    }
+
+    return 'cmake.exe';
+  }
+
+  return 'cmake';
+}
+
 function findGYP() {
   if (hasExecutable('node-gyp'))
     return 'node-gyp';
@@ -611,7 +634,7 @@ function findGYP() {
     }
   }
 
-  throw new Error('Cannot find node-gyp.');
+  return 'node-gyp';
 }
 
 function runGYP(gyp, command, root) {
@@ -621,10 +644,22 @@ function runGYP(gyp, command, root) {
   if (command === 'reconfigure')
     command = 'configure';
 
-  if (path.normalize(gyp).includes(path.sep))
-    exec(process.execPath, [path.resolve(gyp), command], root);
-  else
+  if (path.normalize(gyp).includes(path.sep)) {
+    gyp = path.resolve(gyp);
+
+    try {
+      fs.statSync(gyp);
+    } catch (e) {
+      throw new Error(`GYP not available (${gyp}).`);
+    }
+
+    exec(process.execPath, [gyp, command], root);
+  } else {
+    if (!hasExecutable(gyp))
+      throw new Error(`GYP not available (${gyp}).`);
+
     exec(gyp, [command], root);
+  }
 }
 
 function safeStat(path_) {
