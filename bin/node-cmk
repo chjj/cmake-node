@@ -71,7 +71,7 @@ async function install(options, args) {
 async function configure(options, args) {
   const build = path.join(options.root, 'build');
 
-  fs.mkdirSync(build, 0o755);
+  mkdirp(build, 0o755);
 
   if (process.platform === 'win32') {
     const NODE_LIB = options.lib || (await getNodeLib(options.dist));
@@ -106,6 +106,8 @@ async function configure(options, args) {
 async function build(options, args) {
   const build = path.join(options.root, 'build');
   const config = options.config || 'Release';
+
+  mkdirp(build, 0o755);
 
   if (process.platform === 'win32')
     exec(options.cmake, ['--build', '.', '--config', config, ...args], build);
