@@ -23,7 +23,7 @@ const path = require('path');
 const NODE_BIN = path.basename(process.execPath);
 const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
 
-const VERSION = '0.0.0';
+const VERSION = '0.0.1';
 
 const HELP = `
   Usage: node-cmk [options] [command] -- [cmake args]
