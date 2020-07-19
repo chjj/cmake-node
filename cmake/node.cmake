@@ -33,6 +33,31 @@ if(NOT WIN32)
   list(APPEND _node_globals _FILE_OFFSET_BITS=64)
 endif()
 
+if (NODE_LIB AND EXISTS "${NODE_LIB}")
+  set(_node_lib_file "${NODE_LIB}")
+else()
+  set(NODE_BIN "node")
+  set(_node_dist "https://nodejs.org/dist")
+
+  execute_process(COMMAND "${NODE_BIN}" "-p" "process.version"
+                  OUTPUT_VARIABLE _node_ver)
+  execute_process(COMMAND "${NODE_BIN}" "-p" "process.arch"
+                  OUTPUT_VARIABLE _node_arch)
+
+  string(REGEX MATCH "^v[0-9]+\.[0-9]+\.[0-9]+" _node_ver "${_node_ver}")
+  string(REGEX REPLACE "\n$" "" _node_arch "${_node_arch}")
+
+  set(_node_lib_url "${_node_dist}/${_node_ver}/win-${_node_arch}/node.lib")
+  set(_node_lib_file "node-${_node_ver}-${_node_arch}.lib")
+
+  if(NOT EXISTS "${_node_lib_file}")
+    message(STATUS "Downloading ${_node_lib_url}...")
+    file(DOWNLOAD "${_node_lib_url}" "${_node_lib_file}")
+  endif()
+
+  set(NODE_LIB "${_node_lib_file}" CACHE STRING "Path to node.lib")
+endif()
+
 if(WIN32)
   # Explanation: It's impossible to build a DLL
   # with unresolved symbols. As a result, when
@@ -53,18 +78,22 @@ if(WIN32)
     set(_node_dist "https://nodejs.org/dist")
 
     execute_process(COMMAND "${NODE_BIN}" "-p" "process.version"
-                    RESULT_VARIABLE _node_ver OUTPUT_QUIET)
+                    OUTPUT_VARIABLE _node_ver)
     execute_process(COMMAND "${NODE_BIN}" "-p" "process.arch"
-                    RESULT_VARIABLE _node_arch OUTPUT_QUIET)
+                    OUTPUT_VARIABLE _node_arch)
 
-    string(REGEX MATCH "^v[0-9]+.[0-9]+.[0-9]+" _node_ver "${_node_ver}")
+    string(REGEX MATCH "^v[0-9]+\.[0-9]+\.[0-9]+" _node_ver "${_node_ver}")
+    string(REGEX REPLACE "\n$" "" _node_arch "${_node_arch}")
 
     set(_node_lib_url "${_node_dist}/${_node_ver}/win-${_node_arch}/node.lib")
     set(_node_lib_file "node-${_node_ver}-${_node_arch}.lib")
 
     if(NOT EXISTS "${_node_lib_file}")
+      message(STATUS "Downloading ${_node_lib_url}...")
       file(DOWNLOAD "${_node_lib_url}" "${_node_lib_file}")
     endif()
+
+    set(NODE_LIB "${_node_lib_file}" CACHE STRING "Path to node.lib")
   endif()
 
   get_filename_component(_node_exe "${NODE_BIN}" NAME)
@@ -72,7 +101,7 @@ if(WIN32)
   # Windows requires insane hacks to work properly.
   list(APPEND _node_libs ${_node_lib_file})
   list(APPEND _node_defines HOST_BINARY="${_node_exe}")
-  list(APPEND _node_sources "${_node_dir}/src/win_delay_load_hook.c")
+  list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.c")
   list(APPEND _node_ldflags /delayload:${_node_exe})
   list(APPEND _node_ldflags /ignore:4199)
 endif()
@@ -87,8 +116,8 @@ endforeach()
 
 string(REPLACE ";" " " _node_cflags "${_node_cflags}")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_node_cflags}" CACHE STRING)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_node_cflags}" CACHE STRING)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_node_cflags}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_node_cflags}")
 
 function(add_node_module target)
   set(sources ${ARGV})
@@ -96,7 +125,7 @@ function(add_node_module target)
   add_library(${target} SHARED ${sources} ${_node_sources})
   target_compile_definitions(${target} PRIVATE ${_node_defines}
                              NODE_GYP_MODULE_NAME=${target})
-  target_include_directories(${target} PRIVATE "${_node_dir}/include/node")
+  target_include_directories(${target} PRIVATE "${_node_dir}/../include/node")
   target_link_options(${target} PRIVATE ${_node_ldflags})
   target_link_libraries(${target} PRIVATE ${_node_libs})
   set_property(TARGET ${target} PROPERTY PREFIX "")

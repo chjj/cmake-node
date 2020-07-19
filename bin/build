@@ -8,6 +8,8 @@
 
 'use strict';
 
+process.title = 'build';
+
 const assert = require('assert');
 const cp = require('child_process');
 const fs = require('fs');
@@ -18,7 +20,8 @@ const path = require('path');
  * Constants
  */
 
-const TOOLCHAIN = path.resolve(__dirname, 'cmake', 'node.cmake');
+const NODE_DIST = 'https://nodejs.org/dist';
+const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
 
 const VERSION = '0.0.0';
 
@@ -36,6 +39,7 @@ const HELP = `
 
   Commands:
 
+    install              install necessary files
     configure            configure package
     build                build package
     clean                clean root directory
@@ -47,9 +51,15 @@ const HELP = `
  * Commands
  */
 
-function configure(options, args) {
+async function install(options, args) {
+  if (process.platform === 'win32')
+    await getNodeLib();
+}
+
+async function configure(options, args) {
   if (process.platform === 'win32') {
     exec(options.cmake, ['-D', `NODE_BIN=${process.execPath}`,
+                         '-D', `NODE_LIB=${await getNodeLib()}`,
                          '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`,
                          ...args,
                          options.root]);
@@ -81,7 +91,7 @@ function build(options, args) {
 
 function clean(options, args) {
   (function traverse(path_) {
-    const stat = safeStat(path_);
+    const stat = fs.lstatSync(path_);
 
     if (stat.isDirectory()) {
       switch (path.basename(path_)) {
@@ -240,6 +250,7 @@ function parseArgs(argv) {
 
 const commands = {
   __proto__: null,
+  install,
   configure,
   build,
   clean,
@@ -247,7 +258,7 @@ const commands = {
   rebuild
 };
 
-function main(argv) {
+async function main(argv) {
   const options = parseArgs(argv);
 
   if (!isPackage(options.root))
@@ -256,7 +267,54 @@ function main(argv) {
   if (!commands[options.command])
     throw new Error(`Unknown command: ${options.command}.`);
 
-  commands[options.command](options.args);
+  return commands[options.command](options, options.args);
+}
+
+/*
+ * Installation Files
+ */
+
+async function getNodeLib() {
+  // Explanation: It's impossible to build a DLL
+  // with unresolved symbols. As a result, when
+  // node.js is built, a .lib file is created,
+  // exposing all the necessary symbols.
+  //
+  // When building an addon, MSVS must link to
+  // this .lib file. Unfortunately, this .lib
+  // file is specific to both the node version
+  // and the architecture.
+  //
+  // Further reading: http://edll.sourceforge.net/
+  //
+  // Node.js uses the ".def & .a" solution.
+  const arch = process.arch;
+  const version = process.version.split('-')[0];
+  const url = `${NODE_DIST}/${version}/win-${arch}/node.lib`;
+  const name = `node-${version}-${arch}.lib`;
+
+  // See: https://github.com/sindresorhus/env-paths
+  let {LOCALAPPDATA} = process.env;
+
+  if (!LOCALAPPDATA)
+    LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
+
+  const file = path.resolve(LOCALAPPDATA, 'build', 'Cache', name);
+
+  mkdirp(path.dirname(file));
+
+  let stat = null;
+
+  try {
+    stat = fs.statSync(file);
+  } catch (e) {
+    ;
+  }
+
+  if (!stat || stat.size === 0)
+    await download(url, file);
+
+  return file;
 }
 
 /*
@@ -306,7 +364,6 @@ function isArchDir(path_, stat) {
 
   switch (path.basename(path_)) {
     case 'x86':
-    case 'ia32':
     case 'x64':
     case 'arm':
     case 'arm64':
@@ -392,6 +449,8 @@ function isDirty(path_, stat) {
   // No way to properly identify these.
   switch (path.extname(path_)) {
     case '.a':
+    case '.node':
+      return stat.isFile();
     case '.dylib':
     case '.so':
       return stat.isFile() || stat.isSymbolicLink();
@@ -585,13 +644,91 @@ function _remove(path_) {
   }
 }
 
+function getPaths(path_) {
+  const paths = [];
+
+  let dir = path.normalize(path_);
+
+  for (;;) {
+    paths.push(dir);
+
+    const next = path.dirname(dir);
+
+    if (next === dir)
+      break;
+
+    dir = next;
+  }
+
+  return paths.reverse();
+}
+
+function mkdirp(dir, mode) {
+  if (mode == null)
+    mode = 0o777;
+
+  for (const path_ of getPaths(dir)) {
+    try {
+      const stat = fs.statSync(path_);
+      if (!stat.isDirectory())
+        throw new Error('ENOTDIR');
+    } catch (e) {
+      if (e.code === 'ENOENT')
+        fs.mkdirSync(path_, mode);
+      else
+        throw e;
+    }
+  }
+}
+
+async function download(url, file) {
+  return new Promise((resolve, reject) => {
+    try {
+      _download(url, file, resolve, reject);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function _download(url_, file, resolve, reject) {
+  const http = require('http');
+  const url = require('url');
+  const parsed = url.parse(url_);
+
+  const options = {
+    method: 'GET',
+    host: parsed.host,
+    port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+    path: parsed.path,
+    agent: false
+  };
+
+  process.stdout.write(`Downloading ${url_}...\n`)
+
+  const stream = fs.createWriteStream(file);
+  const req = http.request(options);
+
+  req.on('response', (res) => {
+    try {
+      stream.on('finish', resolve);
+      res.on('error', reject);
+      res.pipe(stream);
+    } catch (e) {
+      reject(e);
+    }
+  });
+
+  stream.on('error', reject);
+  req.on('error', reject);
+  req.end();
+}
+
 /*
  * Execute
  */
 
-try {
-  main(process.argv);
-} catch (e) {
-  process.stderr.write(e.message + '\n');
+main(process.argv).catch((err) => {
+  process.stderr.write(err.message + '\n');
   process.exit(1);
-}
+});
