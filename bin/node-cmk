@@ -36,6 +36,8 @@ const HELP = `
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of toolchain file
+    -f, --fallback       fall back to node-gyp if cmake is not found
+    -g, --gyp            path to node-gyp binary (default: node-gyp)
     -h, --help           output usage information
 
   Commands:
@@ -148,6 +150,8 @@ function parseArgs(argv) {
         : 'cmake',
     dist: 'https://nodejs.org/dist',
     root: '.',
+    fallback: false,
+    gyp: 'node-gyp',
     command: null,
     args: []
   };
@@ -232,6 +236,24 @@ function parseArgs(argv) {
         break;
       }
 
+      case '-f':
+      case '--fallback': {
+        options.fallback = true;
+        break;
+      }
+
+      case '-g':
+      case '--gyp': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.gyp = next;
+
+        i += 1;
+
+        break;
+      }
+
       case '-h':
       case '--help': {
         process.stdout.write(HELP + '\n');
@@ -282,10 +304,21 @@ async function main(argv) {
   const options = parseArgs(argv);
 
   if (!isPackage(options.root))
-    throw new Error(`Not a node.js packagae: ${options.root}.`);
+    throw new Error(`Not a node.js package: ${JSON.stringify(options.root)}.`);
 
   if (!commands[options.command])
-    throw new Error(`Unknown command: ${options.command}.`);
+    throw new Error(`Unknown command: ${JSON.stringify(options.command)}.`);
+
+  if (options.fallback && !hasCMAKE(options.cmake)) {
+    let {command} = options;
+
+    if (command === 'reconfigure')
+      command = 'configure';
+
+    exec(options.gyp, [command], options.root);
+
+    return;
+  }
 
   await commands[options.command](options, options.args);
 }
@@ -539,8 +572,9 @@ function isPackage(dir) {
   }
 }
 
-function spawn(file, args) {
+function exec(file, args, cwd = '.') {
   const result = cp.spawnSync(file, args, {
+    cwd: path.resolve(cwd),
     stdio: 'inherit',
     windowsHide: true
   });
@@ -548,17 +582,26 @@ function spawn(file, args) {
   if (result.error)
     throw result.error;
 
-  return result;
-}
-
-function exec(file, args) {
-  const result = spawn(file, args);
-
   if (result.signal)
     process.kill(process.pid, result.signal);
 
   if (result.status)
     process.exit(result.status);
+}
+
+function hasCMAKE(cmake) {
+  let result;
+
+  try {
+    result = cp.spawnSync(cmake, ['--version'], {
+      stdio: 'ignore',
+      windowsHide: true
+    });
+  } catch (e) {
+    return false;
+  }
+
+  return !result.error && !result.signal && result.status === 0;
 }
 
 function safeStat(path_) {
@@ -764,6 +807,10 @@ function _download(url, file, resolve, reject) {
  */
 
 main(process.argv).catch((err) => {
-  process.stderr.write(err.message + '\n');
+  if (err.code === 'ENOENT')
+    process.stderr.write(`File not found: ${JSON.stringify(err.path)}.\n`);
+  else
+    process.stderr.write(err.message + '\n');
+
   process.exit(1);
 });

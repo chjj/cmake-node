@@ -54,6 +54,8 @@ $ node-cmk rebuild
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of toolchain file
+    -f, --fallback       fall back to node-gyp if cmake is not found
+    -g, --gyp            path to node-gyp binary (default: node-gyp)
     -h, --help           output usage information
 
   Commands:
