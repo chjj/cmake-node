@@ -20,7 +20,7 @@ const path = require('path');
  * Constants
  */
 
-const NODE_DIST = 'https://nodejs.org/dist';
+const NODE_BIN = path.basename(process.execPath);
 const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
 
 const VERSION = '0.0.0';
@@ -33,13 +33,14 @@ const HELP = `
     -v, --version        output the version number
     -c, --config <type>  build type (default: Release)
     -C, --cmake <path>   path to cmake binary (default: cmake/cmake.exe)
+    -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of toolchain file
     -h, --help           output usage information
 
   Commands:
 
-    install              install necessary files
+    install              install necessary files (windows only)
     configure            configure package
     build                build package
     clean                clean root directory
@@ -53,13 +54,15 @@ const HELP = `
 
 async function install(options, args) {
   if (process.platform === 'win32')
-    await getNodeLib();
+    await getNodeLib(options.dist);
 }
 
 async function configure(options, args) {
   if (process.platform === 'win32') {
-    exec(options.cmake, ['-D', `NODE_BIN=${process.execPath}`,
-                         '-D', `NODE_LIB=${await getNodeLib()}`,
+    const NODE_LIB = await getNodeLib(options.dist);
+
+    exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
+                         '-D', `NODE_LIB=${NODE_LIB}`,
                          '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`,
                          ...args,
                          options.root]);
@@ -90,7 +93,7 @@ function build(options, args) {
 }
 
 function clean(options, args) {
-  (function traverse(path_) {
+  const traverse = (path_) => {
     const stat = fs.lstatSync(path_);
 
     if (stat.isDirectory()) {
@@ -112,7 +115,13 @@ function clean(options, args) {
       for (const name of fs.readdirSync(path_))
         traverse(path.join(path_, name));
     }
-  })(path.resolve(options.root));
+  };
+
+  try {
+    traverse(path.resolve(options.root));
+  } catch (e) {
+    ;
+  }
 }
 
 function reconfigure(options, args) {
@@ -136,13 +145,11 @@ function parseArgs(argv) {
     cmake: process.platform === 'win32'
         ? 'cmake.exe'
         : 'cmake',
+    dist: 'https://nodejs.org/dist',
     root: '.',
     command: null,
     args: []
   };
-
-  if (process.env.CMAKE)
-    options.cmake = process.env.CMAKE;
 
   const args = getArgs(argv);
 
@@ -187,6 +194,18 @@ function parseArgs(argv) {
           throw new Error(`Invalid option for: ${arg}.`);
 
         options.cmake = next;
+
+        i += 1;
+
+        break;
+      }
+
+      case '-d':
+      case '--dist': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.dist = next;
 
         i += 1;
 
@@ -274,7 +293,7 @@ async function main(argv) {
  * Installation Files
  */
 
-async function getNodeLib() {
+async function getNodeLib(dist) {
   // Explanation: It's impossible to build a DLL
   // with unresolved symbols. As a result, when
   // node.js is built, a .lib file is created,
@@ -290,7 +309,7 @@ async function getNodeLib() {
   // Node.js uses the ".def & .a" solution.
   const arch = process.arch;
   const version = process.version.split('-')[0];
-  const url = `${NODE_DIST}/${version}/win-${arch}/node.lib`;
+  const url = `${dist}/${version}/win-${arch}/node.lib`;
   const name = `node-${version}-${arch}.lib`;
 
   // See: https://github.com/sindresorhus/env-paths
@@ -300,8 +319,6 @@ async function getNodeLib() {
     LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
 
   const file = path.resolve(LOCALAPPDATA, 'build', 'Cache', name);
-
-  mkdirp(path.dirname(file));
 
   let stat = null;
 
@@ -441,6 +458,7 @@ function isDirty(path_, stat) {
   switch (path.basename(path_)) {
     case 'CMakeCache.txt':
     case 'cmake_install.cmake':
+    case 'DartConfiguration.tcl':
       return stat.isFile();
     case 'CMakeFiles':
       return stat.isDirectory();
@@ -691,35 +709,51 @@ async function download(url, file) {
   });
 }
 
-function _download(url_, file, resolve, reject) {
-  const http = require('http');
-  const url = require('url');
-  const parsed = url.parse(url_);
+function _download(url, file, resolve, reject) {
+  const {parse} = require('url');
+  const parsed = parse(url);
+  const https = parsed.protocol === 'https:';
+  const backend = https ? require('https') : require('http');
 
   const options = {
     method: 'GET',
     host: parsed.host,
-    port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+    port: parsed.port || (https ? 443 : 80),
     path: parsed.path,
     agent: false
   };
 
-  process.stdout.write(`Downloading ${url_}...\n`)
+  process.stdout.write(`Downloading ${url}...\n`);
 
-  const stream = fs.createWriteStream(file);
-  const req = http.request(options);
+  mkdirp(path.dirname(file));
+
+  const req = backend.request(options);
+
+  const handle = (res) => {
+    if (res.statusCode !== 200)
+      throw new Error(`Status code: ${res.statusCode}`);
+
+    if (res.headers.location)
+      throw new Error('HTTP request was redirected.');
+
+    res.on('error', reject);
+
+    const stream = fs.createWriteStream(file);
+
+    stream.on('error', reject);
+    stream.on('finish', resolve);
+
+    res.pipe(stream);
+  };
 
   req.on('response', (res) => {
     try {
-      stream.on('finish', resolve);
-      res.on('error', reject);
-      res.pipe(stream);
+      handle(res);
     } catch (e) {
       reject(e);
     }
   });
 
-  stream.on('error', reject);
   req.on('error', reject);
   req.end();
 }

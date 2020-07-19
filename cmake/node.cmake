@@ -9,7 +9,7 @@ else()
 endif()
 
 if(WIN32)
-  option(NODE_BIN "Path to node.exe" "node.exe")
+  option(NODE_BIN "Node.js executable name" "node.exe")
   option(NODE_LIB "Path to node.lib" "node.lib")
 endif()
 
@@ -33,76 +33,12 @@ if(NOT WIN32)
   list(APPEND _node_globals _FILE_OFFSET_BITS=64)
 endif()
 
-if (NODE_LIB AND EXISTS "${NODE_LIB}")
-  set(_node_lib_file "${NODE_LIB}")
-else()
-  set(NODE_BIN "node")
-  set(_node_dist "https://nodejs.org/dist")
-
-  execute_process(COMMAND "${NODE_BIN}" "-p" "process.version"
-                  OUTPUT_VARIABLE _node_ver)
-  execute_process(COMMAND "${NODE_BIN}" "-p" "process.arch"
-                  OUTPUT_VARIABLE _node_arch)
-
-  string(REGEX MATCH "^v[0-9]+\.[0-9]+\.[0-9]+" _node_ver "${_node_ver}")
-  string(REGEX REPLACE "\n$" "" _node_arch "${_node_arch}")
-
-  set(_node_lib_url "${_node_dist}/${_node_ver}/win-${_node_arch}/node.lib")
-  set(_node_lib_file "node-${_node_ver}-${_node_arch}.lib")
-
-  if(NOT EXISTS "${_node_lib_file}")
-    message(STATUS "Downloading ${_node_lib_url}...")
-    file(DOWNLOAD "${_node_lib_url}" "${_node_lib_file}")
-  endif()
-
-  set(NODE_LIB "${_node_lib_file}" CACHE STRING "Path to node.lib")
-endif()
-
 if(WIN32)
-  # Explanation: It's impossible to build a DLL
-  # with unresolved symbols. As a result, when
-  # node.js is built, a .lib file is created,
-  # exposing all the necessary symbols.
-  #
-  # When building an addon, MSVS must link to
-  # this .lib file. Unfortunately, this .lib
-  # file is specific to both the node version
-  # and the architecture.
-  #
-  # Further reading: http://edll.sourceforge.net/
-  #
-  # Node.js uses the ".def & .a" solution.
-  if (NODE_LIB AND EXISTS "${NODE_LIB}")
-    set(_node_lib_file "${NODE_LIB}")
-  else()
-    set(_node_dist "https://nodejs.org/dist")
-
-    execute_process(COMMAND "${NODE_BIN}" "-p" "process.version"
-                    OUTPUT_VARIABLE _node_ver)
-    execute_process(COMMAND "${NODE_BIN}" "-p" "process.arch"
-                    OUTPUT_VARIABLE _node_arch)
-
-    string(REGEX MATCH "^v[0-9]+\.[0-9]+\.[0-9]+" _node_ver "${_node_ver}")
-    string(REGEX REPLACE "\n$" "" _node_arch "${_node_arch}")
-
-    set(_node_lib_url "${_node_dist}/${_node_ver}/win-${_node_arch}/node.lib")
-    set(_node_lib_file "node-${_node_ver}-${_node_arch}.lib")
-
-    if(NOT EXISTS "${_node_lib_file}")
-      message(STATUS "Downloading ${_node_lib_url}...")
-      file(DOWNLOAD "${_node_lib_url}" "${_node_lib_file}")
-    endif()
-
-    set(NODE_LIB "${_node_lib_file}" CACHE STRING "Path to node.lib")
-  endif()
-
-  get_filename_component(_node_exe "${NODE_BIN}" NAME)
-
   # Windows requires insane hacks to work properly.
-  list(APPEND _node_libs ${_node_lib_file})
-  list(APPEND _node_defines HOST_BINARY="${_node_exe}")
+  list(APPEND _node_libs ${NODE_LIB})
+  list(APPEND _node_defines HOST_BINARY="${NODE_BIN}")
   list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.c")
-  list(APPEND _node_ldflags /delayload:${_node_exe})
+  list(APPEND _node_ldflags /delayload:${NODE_BIN})
   list(APPEND _node_ldflags /ignore:4199)
 endif()
 
