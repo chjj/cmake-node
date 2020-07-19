@@ -587,7 +587,7 @@ function findCMake() {
   return 'cmake';
 }
 
-function findGYP() {
+function findGYP(root) {
   if (hasExecutable('node-gyp'))
     return 'node-gyp';
 
@@ -634,6 +634,12 @@ function findGYP() {
     }
   }
 
+  paths.push(path.resolve(root,
+                          'node_modules',
+                          'node-gyp',
+                          'bin',
+                          'node-gyp.js'));
+
   for (const path_ of paths) {
     try {
       fs.statSync(path_);
@@ -648,7 +654,7 @@ function findGYP() {
 
 function runGYP(gyp, command, root) {
   if (gyp == null)
-    gyp = findGYP();
+    gyp = findGYP(root);
 
   if (command === 'reconfigure')
     command = 'configure';
