@@ -1,25 +1,25 @@
 {
-  "name": "build",
-  "private": true,
+  "name": "node-cmk",
   "version": "0.0.0",
-  "description": "Unnamed build system using cmake",
+  "description": "cmake toolchain for node.js",
   "keywords": [
     "build",
-    "cmake"
+    "cmake",
+    "gyp"
   ],
   "license": "MIT",
-  "repository": "git://github.com/chjj/build.git",
-  "homepage": "https://github.com/chjj/build",
+  "repository": "git://github.com/chjj/node-cmk.git",
+  "homepage": "https://github.com/chjj/node-cmk",
   "bugs": {
-    "url": "https://github.com/chjj/build/issues"
+    "url": "https://github.com/chjj/node-cmk/issues"
   },
   "author": "Christopher Jeffrey <chjjeffrey@gmail.com>",
-  "main": "./bin/build",
+  "main": "./lib/cmake.js",
   "bin": {
-    "build": "./bin/build"
+    "node-cmk": "./bin/node-cmk"
   },
   "scripts": {
-    "lint": "eslint bin/build || exit 0"
+    "lint": "eslint bin/node-cmk lib/ || exit 0"
   },
   "engines": {
     "node": ">=8.0.0"

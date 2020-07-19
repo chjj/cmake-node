@@ -1,6 +1,6 @@
-# build
+# node-cmk
 
-Unnamed build system using cmake.
+CMake toolchain for node.js.
 
 ## Usage
 

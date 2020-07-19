@@ -1,6 +1,6 @@
 # node.cmake - cmake wrapper for node.js
 # Copyright (c) 2020, Christopher Jeffrey (MIT License).
-# https://github.com/chjj/build
+# https://github.com/chjj/node-cmk
 
 if(DEFINED CMAKE_NODEJS_)
   return()

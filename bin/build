@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /*!
- * build - cmake wrapper for node.js
+ * node-cmk - cmake toolchain for node.js
  * Copyright (c) 2020, Christopher Jeffrey (MIT License).
- * https://github.com/chjj/build
+ * https://github.com/chjj/node-cmk
  */
 
 'use strict';
 
-process.title = 'build';
+process.title = 'node-cmk';
 
 const assert = require('assert');
 const cp = require('child_process');
@@ -26,7 +26,7 @@ const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
 const VERSION = '0.0.0';
 
 const HELP = `
-  Usage: build [options] [command] -- [cmake args]
+  Usage: node-cmk [options] [command] -- [cmake args]
 
   Options:
 
@@ -318,7 +318,7 @@ async function getNodeLib(dist) {
   if (!LOCALAPPDATA)
     LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
 
-  const file = path.resolve(LOCALAPPDATA, 'build', 'Cache', name);
+  const file = path.resolve(LOCALAPPDATA, 'node-cmk', 'Cache', name);
 
   let stat = null;
 
