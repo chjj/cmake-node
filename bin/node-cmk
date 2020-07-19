@@ -733,32 +733,63 @@ function _download(url, file, resolve, reject) {
 
   const req = backend.request(options);
 
-  const handle = (res) => {
+  let res = null;
+  let write = null;
+  let done = false;
+
+  const destroy = (stream) => {
+    try {
+      if (stream)
+        stream.destroy();
+    } catch (e) {
+      ;
+    }
+  };
+
+  const error = (err) => {
+    if (!done) {
+      done = true;
+      destroy(req);
+      destroy(res);
+      destroy(write);
+      reject(err);
+    }
+  };
+
+  const finish = (err) => {
+    if (!done) {
+      done = true;
+      resolve();
+    }
+  };
+
+  const handle = () => {
+    res.on('error', error);
+
     if (res.statusCode !== 200)
       throw new Error(`Status code: ${res.statusCode}`);
 
     if (res.headers.location)
       throw new Error('HTTP request was redirected.');
 
-    res.on('error', reject);
+    write = fs.createWriteStream(file);
 
-    const stream = fs.createWriteStream(file);
+    write.on('error', error);
+    write.on('finish', finish);
 
-    stream.on('error', reject);
-    stream.on('finish', resolve);
-
-    res.pipe(stream);
+    res.pipe(write);
   };
 
-  req.on('response', (res) => {
+  req.on('response', (res_) => {
+    res = res_;
     try {
-      handle(res);
+      handle();
     } catch (e) {
-      reject(e);
+      error(e);
     }
   });
 
-  req.on('error', reject);
+  req.on('error', error);
   req.end();
 }
 
