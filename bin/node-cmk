@@ -47,7 +47,7 @@ const LIBRARY_EXTS = [
   '.x'
 ];
 
-const VERSION = '0.0.2';
+const VERSION = '0.0.3';
 
 const HELP = `
   Usage: node-cmk [options] [command] -- [cmake args]
