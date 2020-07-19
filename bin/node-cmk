@@ -10,7 +10,6 @@
 
 process.title = 'node-cmk';
 
-const assert = require('assert');
 const cp = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -73,6 +72,9 @@ async function configure(options, args) {
       '-G', 'Unix Makefiles',
       '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`
     ];
+
+    if (process.platform === 'aix' || process.platform === 'os390')
+      args.push('-D', `NODE_EXP=${getNodeExp()}`);
 
     if (options.config)
       args.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
@@ -267,11 +269,8 @@ function parseArgs(argv) {
       }
 
       default: {
-        if (arg.length === 0 || arg[0] === '-')
+        if (arg.length === 0 || arg[0] === '-' || options.command)
           throw new Error(`Invalid argument: ${arg}.`);
-
-        if (options.command)
-          throw new Error('Already have command.');
 
         options.command = arg;
 
@@ -366,6 +365,58 @@ async function getNodeLib(dist) {
     await download(url, file);
 
   return file;
+}
+
+function getNodeExp() {
+  let list, fallback;
+
+  if (process.platform === 'aix') {
+    list = [
+      'include/node/node.exp',
+      'out/Release/node.exp',
+      'out/Debug/node.exp',
+      'node.exp'
+    ];
+    fallback = 'node.exp';
+  } else {
+    list = [
+      'out/Release/obj.target/libnode.x',
+      'out/Debug/obj.target/libnode.x',
+      'lib/libnode.x'
+    ];
+    fallback = 'libnode.x';
+  }
+
+  const dir = path.dirname(process.execPath);
+  const parent = path.basename(dir);
+
+  let root = null;
+
+  if (parent === 'bin')
+    root = path.join(dir, '..');
+  else if (parent === 'Release' || parent === 'Debug')
+    root = path.join(dir, '../..');
+
+  if (!root)
+    return fallback;
+
+  for (const name of list) {
+    const path_ = path.resolve(root, name);
+
+    let fd;
+
+    try {
+      fd = fs.openSync(path_, 'r');
+    } catch (e) {
+      continue;
+    }
+
+    fs.closeSync(fd);
+
+    return path_;
+  }
+
+  return fallback;
 }
 
 /*
@@ -525,14 +576,10 @@ function isDirty(path_, stat) {
  */
 
 function getArgs(argv) {
-  assert(Array.isArray(argv));
-
   const args = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-
-    assert(typeof arg === 'string');
 
     if (arg.startsWith('--')) {
       // e.g. --opt
@@ -769,7 +816,7 @@ function _download(url, file, resolve, reject) {
 
   process.stdout.write(`Downloading ${url}...\n`);
 
-  mkdirp(path.dirname(file));
+  mkdirp(path.dirname(file), 0o755);
 
   const req = backend.request(options);
 
