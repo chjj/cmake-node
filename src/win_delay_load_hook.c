@@ -37,7 +37,7 @@ load_exe_hook(unsigned int event, DelayLoadInfo *info) {
   if (event != dliNotePreLoadLibrary)
     return NULL;
 
-  if (_stricmp(info->szDll, HOST_BINARY) != 0)
+  if (_stricmp(info->szDll, NODE_HOST_BINARY) != 0)
     return NULL;
 
   m = GetModuleHandle(NULL);
