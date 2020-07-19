@@ -131,23 +131,15 @@ async function clean(options, args) {
   const walk = (path_) => {
     const stat = fs.lstatSync(path_);
 
-    if (stat.isDirectory()) {
-      switch (path.basename(path_)) {
-        case 'CVS':
-        case 'node_modules':
-        case '.git':
-        case '.hg':
-        case '.svn':
-          return;
-      }
-    }
+    if (isIgnorable(path_, stat))
+      return;
 
     if (options.production) {
       if (process.platform === 'win32') {
         if (isBindingDir(path_, stat))
           return;
       } else {
-        if (stat.isFile() && path.extname(path_) === '.node')
+        if (isBinding(path_, stat))
           return;
       }
     }
@@ -158,9 +150,7 @@ async function clean(options, args) {
     }
 
     if (stat.isDirectory()) {
-      const list = fs.readdirSync(path_);
-
-      for (const name of libsFirst(list))
+      for (const name of fs.readdirSync(path_))
         walk(path.join(path_, name));
     }
   };
@@ -597,8 +587,50 @@ function isMakefile(path_, stat) {
 }
 
 /*
- * GYP Cleaning
+ * Cleaning
  */
+
+function isIgnorable(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  switch (path.basename(path_)) {
+    case 'CVS':
+    case 'node_modules':
+    case '.git':
+    case '.hg':
+    case '.svn':
+      return true;
+  }
+
+  return false;
+}
+
+function isCmakeFile(path_, stat) {
+  switch (path.basename(path_)) {
+    case 'CMakeCache.txt':
+    case 'cmake_install.cmake':
+    case 'DartConfiguration.tcl':
+      return stat.isFile();
+    case 'CMakeFiles':
+      return stat.isDirectory();
+  }
+  return false;
+}
+
+function isBinding(path_, stat) {
+  if (!stat.isFile())
+    return false;
+
+  return path.extname(path_) === '.node';
+}
+
+function isLibrary(path_, stat) {
+  if (!stat.isFile() && !stat.isSymbolicLink())
+    return false;
+
+  return isLibraryName(path_);
+}
 
 function isGYPDir(path_, stat) {
   if (!stat.isDirectory())
@@ -627,43 +659,12 @@ function isGYPDir(path_, stat) {
   return false;
 }
 
-/*
- * All Cleaning
- */
-
-function isLibrary(path_, stat) {
-  if (!stat.isFile() && !stat.isSymbolicLink())
-    return false;
-
-  if (!isLibraryName(path_))
-    return false;
-
-  const parent = path.dirname(path_);
-  const sibling = path.join(parent, 'CMakeFiles');
-
-  try {
-    return fs.lstatSync(sibling).isDirectory();
-  } catch (e) {
-    return false;
-  }
-}
-
-/*
- * Cleaning
- */
-
 function isDirty(path_, stat) {
-  if (path.extname(path_) === '.node')
-    return stat.isFile();
+  if (isCmakeFile(path_, stat))
+    return true;
 
-  switch (path.basename(path_)) {
-    case 'CMakeCache.txt':
-    case 'cmake_install.cmake':
-    case 'DartConfiguration.tcl':
-      return stat.isFile();
-    case 'CMakeFiles':
-      return stat.isDirectory();
-  }
+  if (isBinding(path_, stat))
+    return true;
 
   if (isLibrary(path_, stat))
     return true;
@@ -734,21 +735,6 @@ function isArchName(name) {
 function isLibraryName(name) {
   const ext = path.extname(name);
   return LIBRARY_EXTS.includes(ext);
-}
-
-function libsFirst(list) {
-  return list.sort((a, b) => {
-    const al = isLibraryName(a);
-    const bl = isLibraryName(b);
-
-    if (al && !bl)
-      return -1;
-
-    if (!al && bl)
-      return 1;
-
-    return a.localeCompare(b);
-  });
 }
 
 function isPackage(root) {
