@@ -827,7 +827,7 @@ function _download(url, file, resolve, reject) {
     }
   };
 
-  const finish = (err) => {
+  const finish = () => {
     if (!done) {
       done = true;
       resolve();
