@@ -1,0 +1,27 @@
+{
+  "name": "build",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Unnamed build system using cmake",
+  "keywords": [
+    "build",
+    "cmake"
+  ],
+  "license": "MIT",
+  "repository": "git://github.com/chjj/build.git",
+  "homepage": "https://github.com/chjj/build",
+  "bugs": {
+    "url": "https://github.com/chjj/build/issues"
+  },
+  "author": "Christopher Jeffrey <chjjeffrey@gmail.com>",
+  "main": "./bin/build",
+  "bin": {
+    "build": "./bin/build"
+  },
+  "scripts": {
+    "lint": "eslint bin/build || exit 0"
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  }
+}

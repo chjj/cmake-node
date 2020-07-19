@@ -1,0 +1,597 @@
+#!/usr/bin/env node
+
+/*!
+ * build - cmake wrapper for node.js
+ * Copyright (c) 2020, Christopher Jeffrey (MIT License).
+ * https://github.com/chjj/build
+ */
+
+'use strict';
+
+const assert = require('assert');
+const cp = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+/*
+ * Constants
+ */
+
+const TOOLCHAIN = path.resolve(__dirname, 'cmake', 'node.cmake');
+
+const VERSION = '0.0.0';
+
+const HELP = `
+  Usage: build [options] [command] -- [cmake args]
+
+  Options:
+
+    -v, --version        output the version number
+    -c, --config <type>  build type (default: Release)
+    -C, --cmake <path>   path to cmake binary (default: cmake/cmake.exe)
+    -r, --root <path>    path to root directory (default: .)
+    -l, --location       print location of toolchain file
+    -h, --help           output usage information
+
+  Commands:
+
+    configure            configure package
+    build                build package
+    clean                clean root directory
+    reconfigure          reconfigure package
+    rebuild              rebuild package (default)
+`;
+
+/*
+ * Commands
+ */
+
+function configure(options, args) {
+  if (process.platform === 'win32') {
+    exec(options.cmake, ['-D', `NODE_BIN=${process.execPath}`,
+                         '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`,
+                         ...args,
+                         options.root]);
+  } else {
+    const args = [
+      '-G', 'Unix Makefiles',
+      '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`
+    ];
+
+    if (options.config)
+      args.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
+
+    args.push(...args);
+    args.push(options.root);
+
+    exec(options.cmake, args);
+  }
+}
+
+function build(options, args) {
+  if (process.platform === 'win32') {
+    exec(options.cmake, ['--build', options.root,
+                         '--config', options.config || 'Release',
+                         ...args]);
+  } else {
+    exec(options.cmake, ['--build', options.root, ...args]);
+  }
+}
+
+function clean(options, args) {
+  (function traverse(path_) {
+    const stat = safeStat(path_);
+
+    if (stat.isDirectory()) {
+      switch (path.basename(path_)) {
+        case 'CVS':
+        case '.git':
+        case '.hg':
+        case '.svn':
+          return;
+      }
+    }
+
+    if (isDirty(path_, stat)) {
+      remove(path_);
+      return;
+    }
+
+    if (stat.isDirectory()) {
+      for (const name of fs.readdirSync(path_))
+        traverse(path.join(path_, name));
+    }
+  })(path.resolve(options.root));
+}
+
+function reconfigure(options, args) {
+  remove(path.resolve(options.root, 'CMakeCache.txt'));
+  configure(options, args);
+}
+
+function rebuild(options, args) {
+  clean(options, []);
+  configure(options, args);
+  build(options, []);
+}
+
+/*
+ * Argument Parsing
+ */
+
+function parseArgs(argv) {
+  const options = {
+    config: null,
+    cmake: process.platform === 'win32'
+        ? 'cmake.exe'
+        : 'cmake',
+    root: '.',
+    command: null,
+    args: []
+  };
+
+  if (process.env.CMAKE)
+    options.cmake = process.env.CMAKE;
+
+  const args = getArgs(argv);
+
+  let done = false;
+
+  for (let i = 2; i < args.length; i++) {
+    const arg = args[i];
+
+    if (done) {
+      options.args.push(arg);
+      continue;
+    }
+
+    let next = '';
+
+    if (i + 1 < args.length)
+      next = args[i + 1];
+
+    switch (arg) {
+      case '-v':
+      case '--version': {
+        process.stdout.write(VERSION + '\n');
+        process.exit(0);
+        break;
+      }
+
+      case '-c':
+      case '--config': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.config = next;
+
+        i += 1;
+
+        break;
+      }
+
+      case '-C':
+      case '--cmake': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.cmake = next;
+
+        i += 1;
+
+        break;
+      }
+
+      case '-r':
+      case '--root': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.root = next;
+
+        i += 1;
+
+        break;
+      }
+
+      case '-l':
+      case '--location': {
+        process.stdout.write(TOOLCHAIN + '\n');
+        process.exit(0);
+        break;
+      }
+
+      case '-h':
+      case '--help': {
+        process.stdout.write(HELP + '\n');
+        process.exit(0);
+        break;
+      }
+
+      case '--': {
+        done = true;
+        break;
+      }
+
+      default: {
+        if (arg.length === 0 || arg[0] === '-')
+          throw new Error(`Invalid argument: ${arg}.`);
+
+        if (options.command)
+          throw new Error('Already have command.');
+
+        options.command = arg;
+
+        break;
+      }
+    }
+  }
+
+  if (!options.command)
+    options.command = 'rebuild';
+
+  return options;
+}
+
+/*
+ * Main
+ */
+
+const commands = {
+  __proto__: null,
+  configure,
+  build,
+  clean,
+  reconfigure,
+  rebuild
+};
+
+function main(argv) {
+  const options = parseArgs(argv);
+
+  if (!isPackage(options.root))
+    throw new Error(`Not a node.js packagae: ${options.root}.`);
+
+  if (!commands[options.command])
+    throw new Error(`Unknown command: ${options.command}.`);
+
+  commands[options.command](options.args);
+}
+
+/*
+ * Windows Cleaning
+ */
+
+function isTargetDir(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  switch (path.basename(path_)) {
+    case 'Debug':
+    case 'Release':
+    case 'MinSizeRel':
+    case 'RelWithDebInfo':
+      break;
+    default:
+      return false;
+  }
+
+  for (const name of fs.readdirSync(path_)) {
+    if (path.extname(name) === '.lib')
+      return true;
+  }
+
+  return false;
+}
+
+function isObjectDir(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  if (path.extname(path_) !== '.dir')
+    return false;
+
+  const list = fs.readdirSync(path_);
+
+  return list.includes('Debug')
+      || list.includes('Release')
+      || list.includes('MinSizeRel')
+      || list.includes('RelWithDebInfo');
+}
+
+function isArchDir(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  switch (path.basename(path_)) {
+    case 'x86':
+    case 'ia32':
+    case 'x64':
+    case 'arm':
+    case 'arm64':
+      break;
+    default:
+      return false;
+  }
+
+  const list = fs.readdirSync(path_);
+
+  return list.includes('Debug')
+      || list.includes('Release')
+      || list.includes('MinSizeRel')
+      || list.includes('RelWithDebInfo');
+}
+
+function isVCXProj(path_, stat) {
+  if (!stat.isFile())
+    return false;
+
+  if (path.extname(path_) !== '.vcxproj')
+    return false;
+
+  const text = fs.readFileSync(path_, 'utf8');
+
+  return text.includes('cmake');
+}
+
+function isVCXProjFilters(path_, stat) {
+  if (!stat.isFile())
+    return false;
+
+  if (path.extname(path_) !== '.filters')
+    return false;
+
+  const text = fs.readFileSync(path_, 'utf8');
+
+  return text.includes('CMakeLists.txt')
+      || text.includes('CMake Rules');
+}
+
+function isSLN(path_, stat) {
+  if (!stat.isFile())
+    return false;
+
+  if (path.extname(path_) !== '.sln')
+    return false;
+
+  const text = fs.readFileSync(path_, 'utf8');
+
+  return text.includes('ALL_BUILD.vcxproj');
+}
+
+/*
+ * Unix Cleaning
+ */
+
+function isMakefile(path_, stat) {
+  if (!stat.isFile())
+    return false;
+
+  if (path.basename(path_) !== 'Makefile')
+    return false;
+
+  const text = fs.readFileSync(path_, 'utf8');
+
+  return text.includes('CMAKE generated file');
+}
+
+/*
+ * Cleaning
+ */
+
+function isDirty(path_, stat) {
+  switch (path.basename(path_)) {
+    case 'CMakeCache.txt':
+    case 'cmake_install.cmake':
+      return stat.isFile();
+    case 'CMakeFiles':
+      return stat.isDirectory();
+  }
+
+  // No way to properly identify these.
+  switch (path.extname(path_)) {
+    case '.a':
+    case '.dylib':
+    case '.so':
+      return stat.isFile() || stat.isSymbolicLink();
+  }
+
+  if (process.platform === 'win32') {
+    return isTargetDir(path_, stat)
+        || isObjectDir(path_, stat)
+        || isArchDir(path_, stat)
+        || isVCXProj(path_, stat)
+        || isVCXProjFilters(path_, stat)
+        || isSLN(path_, stat);
+  }
+
+  return isMakefile(path_, stat);
+}
+
+/*
+ * Helpers
+ */
+
+function getArgs(argv) {
+  assert(Array.isArray(argv));
+
+  const args = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+
+    assert(typeof arg === 'string');
+
+    if (arg.startsWith('--')) {
+      // e.g. --opt
+      const index = arg.indexOf('=');
+      if (index !== -1) {
+        // e.g. --opt=val
+        args.push(arg.substring(0, index));
+        args.push(arg.substring(index + 1));
+      } else {
+        args.push(arg);
+      }
+    } else if (arg.startsWith('-')) {
+      if (arg.length > 2) {
+        // e.g. -abc
+        for (let j = 1; j < arg.length; j++)
+          args.push(`-${arg.charAt(j)}`);
+      } else {
+        // e.g. -a
+        args.push(arg);
+      }
+    } else {
+      // e.g. foo
+      args.push(arg);
+    }
+  }
+
+  return args;
+}
+
+function isPackage(dir) {
+  try {
+    fs.lstatSync(path.join(dir, 'package.json'));
+    fs.lstatSync(path.join(dir, 'CMakeLists.txt'));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function spawn(file, args) {
+  const result = cp.spawnSync(file, args, {
+    stdio: 'inherit',
+    windowsHide: true
+  });
+
+  if (result.error)
+    throw result.error;
+
+  return result;
+}
+
+function exec(file, args) {
+  const result = spawn(file, args);
+
+  if (result.signal)
+    process.kill(process.pid, result.signal);
+
+  if (result.status)
+    process.exit(result.status);
+}
+
+function safeStat(path_) {
+  try {
+    return fs.lstatSync(path_);
+  } catch (e) {
+    if (e.code === 'EPERM' && process.platform === 'win32') {
+      try {
+        fs.chmodSync(path_, 0o666);
+      } catch (e) {
+        ;
+      }
+      return fs.lstatSync(path_);
+    }
+    throw e;
+  }
+}
+
+function remove(path_) {
+  path_ = path.normalize(path_);
+
+  let tries = 0;
+
+  for (;;) {
+    try {
+      _remove(path_);
+    } catch (e) {
+      const retry = e.code === 'EBUSY'
+                 || e.code === 'ENOTEMPTY'
+                 || e.code === 'EPERM'
+                 || e.code === 'EMFILE'
+                 || e.code === 'ENFILE';
+
+      if (retry && tries < 5) {
+        tries += 1;
+        continue;
+      }
+
+      throw e;
+    }
+
+    break;
+  }
+}
+
+function _remove(path_) {
+  let stat = null;
+
+  try {
+    stat = safeStat(path_);
+  } catch (e) {
+    if (e.code === 'ENOENT')
+      return;
+    throw e;
+  }
+
+  if (stat.isDirectory()) {
+    let list = null;
+
+    try {
+      list = fs.readdirSync(path_);
+    } catch (e) {
+      if (e.code === 'ENOENT')
+        return;
+      throw e;
+    }
+
+    for (const name of list)
+      _remove(path.join(path_, name));
+
+    let tries = 0;
+
+    for (;;) {
+      try {
+        fs.rmdirSync(path_);
+      } catch (e) {
+        if (e.code === 'ENOENT')
+          return;
+
+        if (e.code === 'ENOTEMPTY' && process.platform === 'win32') {
+          if (tries < 5 + 1) {
+            tries += 1;
+            continue;
+          }
+        }
+
+        throw e;
+      }
+
+      break;
+    }
+
+    return;
+  }
+
+  try {
+    fs.unlinkSync(path_);
+  } catch (e) {
+    if (e.code === 'ENOENT')
+      return;
+    throw e;
+  }
+}
+
+/*
+ * Execute
+ */
+
+try {
+  main(process.argv);
+} catch (e) {
+  process.stderr.write(e.message + '\n');
+  process.exit(1);
+}
