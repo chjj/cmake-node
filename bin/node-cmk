@@ -353,7 +353,7 @@ async function main(argv) {
     let {command} = options;
 
     if (!isGYPPackage(options.root))
-      throw new Error(`Not a gyp package: ${JSON.stringify(options.root)}.`);
+      throw new Error(`Not a node.js package: ${options.root}`);
 
     if (command === 'reconfigure')
       command = 'configure';
@@ -364,10 +364,10 @@ async function main(argv) {
   }
 
   if (!isPackage(options.root))
-    throw new Error(`Not a node.js package: ${JSON.stringify(options.root)}.`);
+    throw new Error(`Not a node.js package: ${options.root}`);
 
   if (!commands[options.command])
-    throw new Error(`Unknown command: ${JSON.stringify(options.command)}.`);
+    throw new Error(`Unknown command: ${options.command}.`);
 
   await commands[options.command](options, options.args);
 }
@@ -431,7 +431,7 @@ function getNodeExp() {
   const prefix = path.resolve(process.execPath, '..', '..');
 
   for (const name of list) {
-    const path_ = path.resolve(prefix, name);
+    const path_ = path.join(prefix, name);
 
     let fd;
 
@@ -799,7 +799,7 @@ function _download(url, file, resolve, reject) {
 
 main(process.argv).catch((err) => {
   if (err.code === 'ENOENT')
-    process.stderr.write(`File not found: ${JSON.stringify(err.path)}.\n`);
+    process.stderr.write(`File not found: ${err.path}\n`);
   else
     process.stderr.write(err.message + '\n');
 
