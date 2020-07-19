@@ -108,9 +108,9 @@ async function build(options, args) {
   const config = options.config || 'Release';
 
   if (process.platform === 'win32')
-    exec(options.cmake, ['--build', build, '--config', config, ...args]);
+    exec(options.cmake, ['--build', '.', '--config', config, ...args], build);
   else
-    exec(options.cmake, ['--build', build, ...args]);
+    exec(options.cmake, ['--build', '.', ...args], build);
 }
 
 async function clean(options, args) {
