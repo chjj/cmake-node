@@ -113,6 +113,9 @@ async function build(options, args) {
     exec(options.cmake, ['--build', '.', '--config', config, ...args], build);
   else
     exec(options.cmake, ['--build', '.', ...args], build);
+
+  if (options.production)
+    await clean(options, []);
 }
 
 async function clean(options, args) {
@@ -151,9 +154,6 @@ async function rebuild(options, args) {
   await clean({ root: options.root }, []);
   await configure(options, args);
   await build(options, []);
-
-  if (options.production)
-    await clean(options, []);
 }
 
 /*
