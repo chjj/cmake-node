@@ -176,7 +176,7 @@ function parseArgs(argv) {
     gyp: null,
     lib: null,
     exp: null,
-    command: null,
+    cmd: null,
     args: []
   };
 
@@ -319,17 +319,17 @@ function parseArgs(argv) {
       }
 
       default: {
-        if (arg.length === 0 || arg[0] === '-' || options.command)
+        if (arg.length === 0 || arg[0] === '-' || options.cmd)
           throw new Error(`Invalid argument: ${arg}.`);
 
-        options.command = arg;
+        options.cmd = arg;
 
         break;
       }
     }
   }
 
-  if (!options.command) {
+  if (!options.cmd) {
     process.stdout.write(HELP + '\n');
     process.exit(0);
   }
@@ -359,7 +359,7 @@ async function main(argv) {
       if (!isGYPRoot(options.root))
         throw new Error(`Invalid GYP root: ${options.root}`);
 
-      runGYP(options.gyp, options.command, options.root);
+      runGYP(options.gyp, options.cmd, options.root);
 
       return;
     }
@@ -370,10 +370,10 @@ async function main(argv) {
   if (!isCMakeRoot(options.root))
     throw new Error(`Invalid CMake root: ${options.root}`);
 
-  if (!commands[options.command])
-    throw new Error(`Unknown command: ${options.command}.`);
+  if (!commands[options.cmd])
+    throw new Error(`Unknown command: ${options.cmd}.`);
 
-  await commands[options.command](options, options.args);
+  await commands[options.cmd](options, options.args);
 }
 
 /*
@@ -422,35 +422,23 @@ async function getNodeLib(dist) {
 }
 
 function getNodeExp() {
-  let names, fallback;
+  let name;
 
-  if (process.platform === 'aix') {
-    names = ['/include/node/node.exp', '/node.exp'];
-    fallback = 'node.exp';
-  } else {
-    names = ['/lib/libnode.x'];
-    fallback = 'libnode.x';
-  }
+  if (process.platform === 'aix')
+    name = '/include/node/node.exp';
+  else
+    name = '/lib/libnode.x';
 
   const prefix = path.resolve(process.execPath, '..', '..');
+  const path_ = path.join(prefix, name);
 
-  for (const name of names) {
-    const path_ = path.join(prefix, name);
-
-    let fd;
-
-    try {
-      fd = fs.openSync(path_, 'r');
-    } catch (e) {
-      continue;
-    }
-
-    fs.closeSync(fd);
-
-    return path_;
+  try {
+    fs.closeSync(fs.openSync(path_, 'r'));
+  } catch (e) {
+    return path.basename(name);
   }
 
-  return fallback;
+  return path_;
 }
 
 /*
@@ -652,14 +640,14 @@ function findGYP(root) {
   return 'node-gyp';
 }
 
-function runGYP(gyp, command, root) {
+function runGYP(gyp, cmd, root) {
   if (gyp == null)
     gyp = findGYP(root);
 
-  if (command === 'reconfigure')
-    command = 'configure';
+  if (cmd === 'reconfigure')
+    cmd = 'configure';
 
-  if (path.normalize(gyp).includes(path.sep)) {
+  if (isPath(gyp)) {
     gyp = path.resolve(gyp);
 
     try {
@@ -668,13 +656,21 @@ function runGYP(gyp, command, root) {
       throw new Error(`GYP not available (${gyp}).`);
     }
 
-    exec(process.execPath, [gyp, command], root);
+    exec(process.execPath, [gyp, cmd], root);
   } else {
     if (!hasExecutable(gyp))
       throw new Error(`GYP not available (${gyp}).`);
 
-    exec(gyp, [command], root);
+    exec(gyp, [cmd], root);
   }
+}
+
+function isPath(str) {
+  if (process.platform === 'win32') {
+    if (str.includes('/'))
+      return true;
+  }
+  return str.includes(path.sep);
 }
 
 function safeStat(path_) {
