@@ -71,10 +71,6 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "SunOS")
   list(APPEND _node_ldflags -z,allextract)
 endif()
 
-if(CMAKE_HOST_SYSTEM_NAME STREQUAL "FreeBSD")
-  list(APPEND _node_ldflags --export-dynamic)
-endif()
-
 string(REPLACE ";" " " _node_cflags "${_node_cflags}")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_node_cflags}")
