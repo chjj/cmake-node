@@ -82,7 +82,7 @@ async function configure(options, args) {
   }
 }
 
-function build(options, args) {
+async function build(options, args) {
   if (process.platform === 'win32') {
     exec(options.cmake, ['--build', options.root,
                          '--config', options.config || 'Release',
@@ -92,13 +92,14 @@ function build(options, args) {
   }
 }
 
-function clean(options, args) {
+async function clean(options, args) {
   const traverse = (path_) => {
     const stat = fs.lstatSync(path_);
 
     if (stat.isDirectory()) {
       switch (path.basename(path_)) {
         case 'CVS':
+        case 'node_modules':
         case '.git':
         case '.hg':
         case '.svn':
@@ -124,15 +125,15 @@ function clean(options, args) {
   }
 }
 
-function reconfigure(options, args) {
+async function reconfigure(options, args) {
   remove(path.resolve(options.root, 'CMakeCache.txt'));
-  configure(options, args);
+  await configure(options, args);
 }
 
-function rebuild(options, args) {
-  clean(options, []);
-  configure(options, args);
-  build(options, []);
+async function rebuild(options, args) {
+  await clean(options, []);
+  await configure(options, args);
+  await build(options, []);
 }
 
 /*
@@ -286,7 +287,7 @@ async function main(argv) {
   if (!commands[options.command])
     throw new Error(`Unknown command: ${options.command}.`);
 
-  return commands[options.command](options, options.args);
+  await commands[options.command](options, options.args);
 }
 
 /*
