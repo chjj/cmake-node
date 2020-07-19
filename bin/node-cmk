@@ -22,6 +22,31 @@ const path = require('path');
 const NODE_BIN = path.basename(process.execPath);
 const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
 
+const BUILD_TYPES = [
+  'Debug',
+  'Release',
+  'MinSizeRel',
+  'RelWithDebInfo'
+];
+
+const ARCH_NAMES = [
+  'x86',
+  'x64',
+  'arm',
+  'arm64'
+];
+
+const LIBRARY_EXTS = [
+  '.a',
+  '.dll',
+  '.dylib',
+  '.exp',
+  '.lib',
+  '.node',
+  '.so',
+  '.x'
+];
+
 const VERSION = '0.0.2';
 
 const HELP = `
@@ -37,7 +62,9 @@ const HELP = `
     -l, --location       print location of toolchain file
     -f, --fallback       fall back to node-gyp if cmake is not found
     -p, --production     clean all files except for .node files
-    -g, --gyp            path to node-gyp binary (default: node-gyp)
+    -g, --gyp <path>     path to node-gyp binary (default: node-gyp)
+    --node-lib <path>    path to node.lib (windows only)
+    --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -h, --help           output usage information
 
   Commands:
@@ -61,7 +88,7 @@ async function install(options, args) {
 
 async function configure(options, args) {
   if (process.platform === 'win32') {
-    const NODE_LIB = await getNodeLib(options.dist);
+    const NODE_LIB = options.lib || (await getNodeLib(options.dist));
 
     exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
                          '-D', `NODE_LIB=${NODE_LIB}`,
@@ -74,8 +101,11 @@ async function configure(options, args) {
       '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`
     ];
 
-    if (process.platform === 'aix' || process.platform === 'os390')
-      args.push('-D', `NODE_EXP=${getNodeExp()}`);
+    if (process.platform === 'aix' || process.platform === 'os390') {
+      const NODE_EXP = options.exp || getNodeExp();
+
+      args.push('-D', `NODE_EXP=${NODE_EXP}`);
+    }
 
     if (options.config)
       args.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
@@ -114,7 +144,7 @@ async function clean(options, args) {
 
     if (options.production) {
       if (process.platform === 'win32') {
-        if (isTargetDir(path_, stat))
+        if (isBindingDir(path_, stat))
           return;
       } else {
         if (stat.isFile() && path.extname(path_) === '.node')
@@ -128,7 +158,9 @@ async function clean(options, args) {
     }
 
     if (stat.isDirectory()) {
-      for (const name of fs.readdirSync(path_))
+      const list = fs.readdirSync(path_);
+
+      for (const name of libsFirst(list))
         walk(path.join(path_, name));
     }
   };
@@ -169,6 +201,8 @@ function parseArgs(argv) {
     fallback: false,
     production: false,
     gyp: 'node-gyp',
+    lib: null,
+    exp: null,
     command: null,
     args: []
   };
@@ -277,6 +311,28 @@ function parseArgs(argv) {
         break;
       }
 
+      case '--node-lib': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.lib = path.resolve(next);
+
+        i += 1;
+
+        break;
+      }
+
+      case '--node-exp': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.exp = path.resolve(next);
+
+        i += 1;
+
+        break;
+      }
+
       case '-h':
       case '--help': {
         process.stdout.write(HELP + '\n');
@@ -323,14 +379,11 @@ const commands = {
 async function main(argv) {
   const options = parseArgs(argv);
 
-  if (!isPackage(options.root))
-    throw new Error(`Not a node.js package: ${JSON.stringify(options.root)}.`);
-
-  if (!commands[options.command])
-    throw new Error(`Unknown command: ${JSON.stringify(options.command)}.`);
-
   if (options.fallback && !hasCmake(options.cmake)) {
     let {command} = options;
+
+    if (!isGYPPackage(options.root))
+      throw new Error(`Not a gyp package: ${JSON.stringify(options.root)}.`);
 
     if (command === 'reconfigure')
       command = 'configure';
@@ -339,6 +392,12 @@ async function main(argv) {
 
     return;
   }
+
+  if (!isPackage(options.root))
+    throw new Error(`Not a node.js package: ${JSON.stringify(options.root)}.`);
+
+  if (!commands[options.command])
+    throw new Error(`Unknown command: ${JSON.stringify(options.command)}.`);
 
   await commands[options.command](options, options.args);
 }
@@ -377,7 +436,7 @@ async function getNodeLib(dist) {
   let stat = null;
 
   try {
-    stat = fs.statSync(file);
+    stat = fs.lstatSync(file);
   } catch (e) {
     ;
   }
@@ -392,37 +451,17 @@ function getNodeExp() {
   let list, fallback;
 
   if (process.platform === 'aix') {
-    list = [
-      'include/node/node.exp',
-      'out/Release/node.exp',
-      'out/Debug/node.exp',
-      'node.exp'
-    ];
+    list = ['include/node/node.exp', 'node.exp'];
     fallback = 'node.exp';
   } else {
-    list = [
-      'out/Release/obj.target/libnode.x',
-      'out/Debug/obj.target/libnode.x',
-      'lib/libnode.x'
-    ];
+    list = ['lib/libnode.x'];
     fallback = 'libnode.x';
   }
 
-  const dir = path.dirname(process.execPath);
-  const parent = path.basename(dir);
-
-  let root = null;
-
-  if (parent === 'bin')
-    root = path.join(dir, '..');
-  else if (parent === 'Release' || parent === 'Debug')
-    root = path.join(dir, '../..');
-
-  if (!root)
-    return fallback;
+  const prefix = path.resolve(process.execPath, '..', '..');
 
   for (const name of list) {
-    const path_ = path.resolve(root, name);
+    const path_ = path.resolve(prefix, name);
 
     let fd;
 
@@ -444,19 +483,27 @@ function getNodeExp() {
  * Windows Cleaning
  */
 
+function isBindingDir(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  if (!isBuildType(path_))
+    return false;
+
+  for (const name of fs.readdirSync(path_)) {
+    if (path.extname(name) === '.node')
+      return true;
+  }
+
+  return false;
+}
+
 function isTargetDir(path_, stat) {
   if (!stat.isDirectory())
     return false;
 
-  switch (path.basename(path_)) {
-    case 'Debug':
-    case 'Release':
-    case 'MinSizeRel':
-    case 'RelWithDebInfo':
-      break;
-    default:
-      return false;
-  }
+  if (!isBuildType(path_))
+    return false;
 
   for (const name of fs.readdirSync(path_)) {
     if (path.extname(name) === '.lib')
@@ -473,34 +520,27 @@ function isObjectDir(path_, stat) {
   if (path.extname(path_) !== '.dir')
     return false;
 
-  const list = fs.readdirSync(path_);
+  for (const name of fs.readdirSync(path_)) {
+    if (isBuildType(name))
+      return true;
+  }
 
-  return list.includes('Debug')
-      || list.includes('Release')
-      || list.includes('MinSizeRel')
-      || list.includes('RelWithDebInfo');
+  return false;
 }
 
 function isArchDir(path_, stat) {
   if (!stat.isDirectory())
     return false;
 
-  switch (path.basename(path_)) {
-    case 'x86':
-    case 'x64':
-    case 'arm':
-    case 'arm64':
-      break;
-    default:
-      return false;
+  if (!isArchName(path_))
+    return false;
+
+  for (const name of fs.readdirSync(path_)) {
+    if (isBuildType(name))
+      return true;
   }
 
-  const list = fs.readdirSync(path_);
-
-  return list.includes('Debug')
-      || list.includes('Release')
-      || list.includes('MinSizeRel')
-      || list.includes('RelWithDebInfo');
+  return false;
 }
 
 function isVCXProj(path_, stat) {
@@ -588,10 +628,34 @@ function isGYPDir(path_, stat) {
 }
 
 /*
+ * All Cleaning
+ */
+
+function isLibrary(path_, stat) {
+  if (!stat.isFile() && !stat.isSymbolicLink())
+    return false;
+
+  if (!isLibraryName(path_))
+    return false;
+
+  const parent = path.dirname(path_);
+  const sibling = path.join(parent, 'CMakeFiles');
+
+  try {
+    return fs.lstatSync(sibling).isDirectory();
+  } catch (e) {
+    return false;
+  }
+}
+
+/*
  * Cleaning
  */
 
 function isDirty(path_, stat) {
+  if (path.extname(path_) === '.node')
+    return stat.isFile();
+
   switch (path.basename(path_)) {
     case 'CMakeCache.txt':
     case 'cmake_install.cmake':
@@ -601,15 +665,8 @@ function isDirty(path_, stat) {
       return stat.isDirectory();
   }
 
-  // No way to properly identify these.
-  switch (path.extname(path_)) {
-    case '.a':
-    case '.node':
-      return stat.isFile();
-    case '.dylib':
-    case '.so':
-      return stat.isFile() || stat.isSymbolicLink();
-  }
+  if (isLibrary(path_, stat))
+    return true;
 
   if (isGYPDir(path_, stat))
     return true;
@@ -664,10 +721,50 @@ function getArgs(argv) {
   return args;
 }
 
-function isPackage(dir) {
+function isBuildType(name) {
+  const base = path.basename(name);
+  return BUILD_TYPES.includes(base);
+}
+
+function isArchName(name) {
+  const base = path.basename(name);
+  return ARCH_NAMES.includes(base);
+}
+
+function isLibraryName(name) {
+  const ext = path.extname(name);
+  return LIBRARY_EXTS.includes(ext);
+}
+
+function libsFirst(list) {
+  return list.sort((a, b) => {
+    const al = isLibraryName(a);
+    const bl = isLibraryName(b);
+
+    if (al && !bl)
+      return -1;
+
+    if (!al && bl)
+      return 1;
+
+    return a.localeCompare(b);
+  });
+}
+
+function isPackage(root) {
   try {
-    fs.lstatSync(path.join(dir, 'package.json'));
-    fs.lstatSync(path.join(dir, 'CMakeLists.txt'));
+    fs.lstatSync(path.join(root, 'package.json'));
+    fs.lstatSync(path.join(root, 'CMakeLists.txt'));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function isGYPPackage(root) {
+  try {
+    fs.lstatSync(path.join(root, 'package.json'));
+    fs.lstatSync(path.join(root, 'binding.gyp'));
     return true;
   } catch (e) {
     return false;

@@ -56,7 +56,9 @@ $ node-cmk rebuild
     -l, --location       print location of toolchain file
     -f, --fallback       fall back to node-gyp if cmake is not found
     -p, --production     clean all files except for .node files
-    -g, --gyp            path to node-gyp binary (default: node-gyp)
+    -g, --gyp <path>     path to node-gyp binary (default: node-gyp)
+    --node-lib <path>    path to node.lib (windows only)
+    --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -h, --help           output usage information
 
   Commands:
