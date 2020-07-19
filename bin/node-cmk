@@ -418,10 +418,10 @@ function getNodeExp() {
   let names, fallback;
 
   if (process.platform === 'aix') {
-    names = ['include/node/node.exp', 'node.exp'];
+    names = ['/include/node/node.exp', '/node.exp'];
     fallback = 'node.exp';
   } else {
-    names = ['lib/libnode.x'];
+    names = ['/lib/libnode.x'];
     fallback = 'libnode.x';
   }
 
@@ -558,10 +558,13 @@ function findCMake() {
     if (hasExecutable('cmake.exe'))
       return 'cmake.exe';
 
-    const paths = [
-      '\\Program Files\\CMake\\bin\\cmake.exe',
-      '\\Program Files (x86)\\CMake\\bin\\cmake.exe'
-    ];
+    const paths = [];
+
+    for (const prefix of [process.env.LOCALAPPDATA,
+                          process.env.PROGRAMFILES,
+                          process.env['PROGRAMFILES(X86)']]) {
+      paths.push(path.join(prefix, 'CMake', 'bin', 'cmake.exe'));
+    }
 
     for (const path_ of paths) {
       try {
