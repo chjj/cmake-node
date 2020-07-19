@@ -558,15 +558,11 @@ function findCMake() {
     if (hasExecutable('cmake.exe'))
       return 'cmake.exe';
 
-    const paths = [];
-
     for (const prefix of [process.env.LOCALAPPDATA,
                           process.env.PROGRAMFILES,
                           process.env['PROGRAMFILES(X86)']]) {
-      paths.push(path.join(prefix, 'CMake', 'bin', 'cmake.exe'));
-    }
+      const path_ = path.join(prefix, 'CMake', 'bin', 'cmake.exe');
 
-    for (const path_ of paths) {
       try {
         fs.statSync(path_);
         return path_;
