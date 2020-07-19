@@ -98,7 +98,7 @@ async function build(options, args) {
 }
 
 async function clean(options, args) {
-  const traverse = (path_) => {
+  const walk = (path_) => {
     const stat = fs.lstatSync(path_);
 
     if (stat.isDirectory()) {
@@ -129,12 +129,12 @@ async function clean(options, args) {
 
     if (stat.isDirectory()) {
       for (const name of fs.readdirSync(path_))
-        traverse(path.join(path_, name));
+        walk(path.join(path_, name));
     }
   };
 
   try {
-    traverse(path.resolve(options.root));
+    walk(path.resolve(options.root));
   } catch (e) {
     ;
   }
@@ -329,7 +329,7 @@ async function main(argv) {
   if (!commands[options.command])
     throw new Error(`Unknown command: ${JSON.stringify(options.command)}.`);
 
-  if (options.fallback && !hasCMAKE(options.cmake)) {
+  if (options.fallback && !hasCmake(options.cmake)) {
     let {command} = options;
 
     if (command === 'reconfigure')
@@ -691,7 +691,7 @@ function exec(file, args, cwd = '.') {
     process.exit(result.status);
 }
 
-function hasCMAKE(cmake) {
+function hasCmake(cmake) {
   let result;
 
   try {
