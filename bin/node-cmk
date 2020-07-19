@@ -349,18 +349,22 @@ const commands = {
 async function main(argv) {
   const options = parseArgs(argv);
 
-  if (options.fallback && !hasCmake(options.cmake)) {
-    let {command} = options;
+  if (!hasCmake(options.cmake)) {
+    if (options.fallback) {
+      let {command} = options;
 
-    if (!isGYPPackage(options.root))
-      throw new Error(`Not a node.js package: ${options.root}`);
+      if (!isGYPPackage(options.root))
+        throw new Error(`Not a node.js package: ${options.root}`);
 
-    if (command === 'reconfigure')
-      command = 'configure';
+      if (command === 'reconfigure')
+        command = 'configure';
 
-    exec(options.gyp, [command], options.root);
+      exec(options.gyp, [command], options.root);
 
-    return;
+      return;
+    }
+
+    throw new Error(`CMake not available (${options.cmake}).`);
   }
 
   if (!isPackage(options.root))
