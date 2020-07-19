@@ -46,8 +46,6 @@ if(WIN32)
 endif()
 
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400")
-  list(APPEND _node_cflags -maix64)
-  list(APPEND _node_ldflags -bbigtoc)
   list(APPEND _node_ldflags "-bimport:${NODE_EXP}")
 endif()
 
@@ -61,14 +59,6 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "OS390")
   list(APPEND _node_cflags -DMAP_FAILED=-1)
   list(APPEND _node_cflags -D_UNIX03_SOURCE=1)
   list(APPEND _node_libs "${NODE_EXP}")
-endif()
-
-if(UNIX AND NOT CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400|OS390")
-  list(APPEND _node_ldflags -rdynamic)
-endif()
-
-if(CMAKE_HOST_SYSTEM_NAME STREQUAL "SunOS")
-  list(APPEND _node_ldflags -z,allextract)
 endif()
 
 string(REPLACE ";" " " _node_cflags "${_node_cflags}")
