@@ -4,10 +4,6 @@ Node.js toolchain for CMake.
 
 ## Design
 
-node-cmk differs from other cmake wrappers in that it actually provides a
-toolchain file for node.js. It exposes one function, `add_node_module`, which
-creates a dynamically loadable library for any given OS.
-
 node-cmk is very lightweight and requires no dependencies. This provides a nice
 alternative to node-gyp and cmake-js, which pull in half of npm just to build a
 project.
@@ -30,9 +26,10 @@ CMakeLists.txt:
 
 ``` cmake
 project(my_project LANGUAGES C)
+add_node_library(my_library STATIC src/my_lib.c)
 add_node_module(my_project src/my_code.c)
-# my_project now behaves like a SHARED target.
 target_compile_definitions(my_project PRIVATE FOOBAR=1)
+target_link_libraries(my_project PRIVATE my_library)
 ```
 
 To build:
