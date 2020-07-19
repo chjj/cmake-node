@@ -68,7 +68,7 @@ $ node-cmk rebuild
     build                build package
     clean                clean root directory
     reconfigure          reconfigure package
-    rebuild              rebuild package (default)
+    rebuild              rebuild package
 ```
 
 ## Contribution and License Agreement

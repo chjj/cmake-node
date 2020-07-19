@@ -30,6 +30,7 @@ const BUILD_TYPES = [
 ];
 
 const VERSION = '0.0.7';
+const NAPI_VERSION = '14.5.0';
 
 const HELP = `
   Usage: node-cmk [options] [command] -- [cmake args]
@@ -56,7 +57,11 @@ const HELP = `
     build                build package
     clean                clean root directory
     reconfigure          reconfigure package
-    rebuild              rebuild package (default)
+    rebuild              rebuild package
+
+  node@${process.versions.node} - ${process.execPath}
+  napi@${NAPI_VERSION} - ${path.resolve(__dirname, '..', 'include', 'node')}
+  node-cmk@${VERSION} - ${__filename}
 `;
 
 /*
@@ -324,8 +329,10 @@ function parseArgs(argv) {
     }
   }
 
-  if (!options.command)
-    options.command = 'rebuild';
+  if (!options.command) {
+    process.stdout.write(HELP + '\n');
+    process.exit(0);
+  }
 
   return options;
 }
