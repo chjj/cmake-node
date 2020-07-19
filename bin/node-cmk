@@ -29,24 +29,6 @@ const BUILD_TYPES = [
   'RelWithDebInfo'
 ];
 
-const ARCH_NAMES = [
-  'x86',
-  'x64',
-  'arm',
-  'arm64'
-];
-
-const LIBRARY_EXTS = [
-  '.a',
-  '.dll',
-  '.dylib',
-  '.exp',
-  '.lib',
-  '.node',
-  '.so',
-  '.x'
-];
-
 const VERSION = '0.0.3';
 
 const HELP = `
@@ -87,6 +69,10 @@ async function install(options, args) {
 }
 
 async function configure(options, args) {
+  const build = path.join(options.root, 'build');
+
+  fs.mkdirSync(build, 0o755);
+
   if (process.platform === 'win32') {
     const NODE_LIB = options.lib || (await getNodeLib(options.dist));
 
@@ -94,7 +80,7 @@ async function configure(options, args) {
                          '-D', `NODE_LIB=${NODE_LIB}`,
                          '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`,
                          ...args,
-                         options.root]);
+                         '..'], build);
   } else {
     const args = [
       '-G', 'Unix Makefiles',
@@ -111,59 +97,51 @@ async function configure(options, args) {
       args.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
 
     args.push(...args);
-    args.push(options.root);
+    args.push('..');
 
-    exec(options.cmake, args);
+    exec(options.cmake, args, build);
   }
 }
 
 async function build(options, args) {
-  if (process.platform === 'win32') {
-    exec(options.cmake, ['--build', options.root,
-                         '--config', options.config || 'Release',
-                         ...args]);
-  } else {
-    exec(options.cmake, ['--build', options.root, ...args]);
-  }
+  const build = path.join(options.root, 'build');
+  const config = options.config || 'Release';
+
+  if (process.platform === 'win32')
+    exec(options.cmake, ['--build', build, '--config', config, ...args]);
+  else
+    exec(options.cmake, ['--build', build, ...args]);
 }
 
 async function clean(options, args) {
-  const walk = (path_) => {
-    const stat = fs.lstatSync(path_);
+  const build = path.join(options.root, 'build');
 
-    if (isIgnorable(path_, stat))
-      return;
+  let exclude = null;
 
-    if (options.production) {
-      if (process.platform === 'win32') {
-        if (isBindingDir(path_, stat))
-          return;
-      } else {
-        if (isBinding(path_, stat))
-          return;
+  if (options.production) {
+    if (process.platform === 'win32') {
+      for (const type of BUILD_TYPES) {
+        const dir = path.join(build, type);
+
+        if (findBinding(dir)) {
+          exclude = dir;
+          break;
+        }
       }
+    } else {
+      exclude = findBinding(build);
     }
-
-    if (isDirty(path_, stat)) {
-      remove(path_);
-      return;
-    }
-
-    if (stat.isDirectory()) {
-      for (const name of fs.readdirSync(path_))
-        walk(path.join(path_, name));
-    }
-  };
-
-  try {
-    walk(path.resolve(options.root));
-  } catch (e) {
-    ;
   }
+
+  remove(build, exclude);
 }
 
 async function reconfigure(options, args) {
-  remove(path.resolve(options.root, 'CMakeCache.txt'));
+  const build = path.join(options.root, 'build');
+  const cache = path.join(build, 'CMakeCache.txt');
+
+  remove(cache);
+
   await configure(options, args);
 }
 
@@ -470,221 +448,6 @@ function getNodeExp() {
 }
 
 /*
- * Windows Cleaning
- */
-
-function isBindingDir(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  if (!isBuildType(path_))
-    return false;
-
-  for (const name of fs.readdirSync(path_)) {
-    if (path.extname(name) === '.node')
-      return true;
-  }
-
-  return false;
-}
-
-function isTargetDir(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  if (!isBuildType(path_))
-    return false;
-
-  for (const name of fs.readdirSync(path_)) {
-    if (path.extname(name) === '.lib')
-      return true;
-  }
-
-  return false;
-}
-
-function isObjectDir(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  if (path.extname(path_) !== '.dir')
-    return false;
-
-  for (const name of fs.readdirSync(path_)) {
-    if (isBuildType(name))
-      return true;
-  }
-
-  return false;
-}
-
-function isArchDir(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  if (!isArchName(path_))
-    return false;
-
-  for (const name of fs.readdirSync(path_)) {
-    if (isBuildType(name))
-      return true;
-  }
-
-  return false;
-}
-
-function isVCXProj(path_, stat) {
-  if (!stat.isFile())
-    return false;
-
-  if (path.extname(path_) !== '.vcxproj')
-    return false;
-
-  const text = fs.readFileSync(path_, 'utf8');
-
-  return text.includes('cmake');
-}
-
-function isVCXProjFilters(path_, stat) {
-  if (!stat.isFile())
-    return false;
-
-  if (path.extname(path_) !== '.filters')
-    return false;
-
-  const text = fs.readFileSync(path_, 'utf8');
-
-  return text.includes('CMakeLists.txt')
-      || text.includes('CMake Rules');
-}
-
-function isSLN(path_, stat) {
-  if (!stat.isFile())
-    return false;
-
-  if (path.extname(path_) !== '.sln')
-    return false;
-
-  const text = fs.readFileSync(path_, 'utf8');
-
-  return text.includes('ALL_BUILD.vcxproj');
-}
-
-/*
- * Unix Cleaning
- */
-
-function isMakefile(path_, stat) {
-  if (!stat.isFile())
-    return false;
-
-  if (path.basename(path_) !== 'Makefile')
-    return false;
-
-  const text = fs.readFileSync(path_, 'utf8');
-
-  return text.includes('CMAKE generated file');
-}
-
-/*
- * Cleaning
- */
-
-function isIgnorable(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  switch (path.basename(path_)) {
-    case 'CVS':
-    case 'node_modules':
-    case '.git':
-    case '.hg':
-    case '.svn':
-      return true;
-  }
-
-  return false;
-}
-
-function isCmakeFile(path_, stat) {
-  switch (path.basename(path_)) {
-    case 'CMakeCache.txt':
-    case 'cmake_install.cmake':
-    case 'DartConfiguration.tcl':
-      return stat.isFile();
-    case 'CMakeFiles':
-      return stat.isDirectory();
-  }
-  return false;
-}
-
-function isBinding(path_, stat) {
-  if (!stat.isFile())
-    return false;
-
-  return path.extname(path_) === '.node';
-}
-
-function isLibrary(path_, stat) {
-  if (!stat.isFile() && !stat.isSymbolicLink())
-    return false;
-
-  return isLibraryName(path_);
-}
-
-function isGYPDir(path_, stat) {
-  if (!stat.isDirectory())
-    return false;
-
-  if (path.basename(path_) !== 'build')
-    return false;
-
-  for (const dir of [path_,
-                     path.join(path_, 'Debug'),
-                     path.join(path_, 'Release')]) {
-    let list;
-
-    try {
-      list = fs.readdirSync(dir);
-    } catch (e) {
-      continue;
-    }
-
-    for (const name of list) {
-      if (path.extname(name) === '.node')
-        return true;
-    }
-  }
-
-  return false;
-}
-
-function isDirty(path_, stat) {
-  if (isCmakeFile(path_, stat))
-    return true;
-
-  if (isBinding(path_, stat))
-    return true;
-
-  if (isLibrary(path_, stat))
-    return true;
-
-  if (isGYPDir(path_, stat))
-    return true;
-
-  if (process.platform === 'win32') {
-    return isTargetDir(path_, stat)
-        || isObjectDir(path_, stat)
-        || isArchDir(path_, stat)
-        || isVCXProj(path_, stat)
-        || isVCXProjFilters(path_, stat)
-        || isSLN(path_, stat);
-  }
-
-  return isMakefile(path_, stat);
-}
-
-/*
  * Helpers
  */
 
@@ -722,21 +485,6 @@ function getArgs(argv) {
   return args;
 }
 
-function isBuildType(name) {
-  const base = path.basename(name);
-  return BUILD_TYPES.includes(base);
-}
-
-function isArchName(name) {
-  const base = path.basename(name);
-  return ARCH_NAMES.includes(base);
-}
-
-function isLibraryName(name) {
-  const ext = path.extname(name);
-  return LIBRARY_EXTS.includes(ext);
-}
-
 function isPackage(root) {
   try {
     fs.lstatSync(path.join(root, 'package.json'));
@@ -755,6 +503,23 @@ function isGYPPackage(root) {
   } catch (e) {
     return false;
   }
+}
+
+function findBinding(root) {
+  let list;
+
+  try {
+    list = fs.readdirSync(root);
+  } catch (e) {
+    return null;
+  }
+
+  for (const name of list) {
+    if (path.extname(name) === '.node')
+      return path.join(root, name);
+  }
+
+  return null;
 }
 
 function exec(file, args, cwd = '.') {
@@ -805,14 +570,17 @@ function safeStat(path_) {
   }
 }
 
-function remove(path_) {
+function remove(path_, exclude = null) {
   path_ = path.normalize(path_);
+
+  if (exclude)
+    exclude = path.normalize(exclude);
 
   let tries = 0;
 
   for (;;) {
     try {
-      _remove(path_);
+      _remove(path_, exclude);
     } catch (e) {
       const retry = e.code === 'EBUSY'
                  || e.code === 'ENOTEMPTY'
@@ -832,39 +600,42 @@ function remove(path_) {
   }
 }
 
-function _remove(path_) {
+function _remove(path_, exclude) {
   let stat = null;
+
+  if (exclude && path_ === exclude)
+    return 1;
 
   try {
     stat = safeStat(path_);
   } catch (e) {
     if (e.code === 'ENOENT')
-      return;
+      return 0;
     throw e;
   }
 
   if (stat.isDirectory()) {
     let list = null;
+    let flag = 0;
+    let tries = 0;
 
     try {
       list = fs.readdirSync(path_);
     } catch (e) {
       if (e.code === 'ENOENT')
-        return;
+        return 0;
       throw e;
     }
 
     for (const name of list)
-      _remove(path.join(path_, name));
+      flag |= _remove(path.join(path_, name), exclude);
 
-    let tries = 0;
-
-    for (;;) {
+    while (!flag) {
       try {
         fs.rmdirSync(path_);
       } catch (e) {
         if (e.code === 'ENOENT')
-          return;
+          return 0;
 
         if (e.code === 'ENOTEMPTY' && process.platform === 'win32') {
           if (tries < 5 + 1) {
@@ -879,16 +650,18 @@ function _remove(path_) {
       break;
     }
 
-    return;
+    return flag;
   }
 
   try {
     fs.unlinkSync(path_);
   } catch (e) {
     if (e.code === 'ENOENT')
-      return;
+      return 0;
     throw e;
   }
+
+  return 0;
 }
 
 function getPaths(path_) {
