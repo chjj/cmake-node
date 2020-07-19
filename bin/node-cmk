@@ -36,6 +36,7 @@ const HELP = `
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of toolchain file
     -f, --fallback       fall back to node-gyp if cmake is not found
+    -p, --production     clean all files except for .node files
     -g, --gyp            path to node-gyp binary (default: node-gyp)
     -h, --help           output usage information
 
@@ -111,6 +112,16 @@ async function clean(options, args) {
       }
     }
 
+    if (options.production) {
+      if (process.platform === 'win32') {
+        if (isTargetDir(path_, stat))
+          return;
+      } else {
+        if (stat.isFile() && path.extname(path_) === '.node')
+          return;
+      }
+    }
+
     if (isDirty(path_, stat)) {
       remove(path_);
       return;
@@ -135,9 +146,12 @@ async function reconfigure(options, args) {
 }
 
 async function rebuild(options, args) {
-  await clean(options, []);
+  await clean({ root: options.root }, []);
   await configure(options, args);
   await build(options, []);
+
+  if (options.production)
+    await clean(options, []);
 }
 
 /*
@@ -153,6 +167,7 @@ function parseArgs(argv) {
     dist: 'https://nodejs.org/dist',
     root: '.',
     fallback: false,
+    production: false,
     gyp: 'node-gyp',
     command: null,
     args: []
@@ -241,6 +256,12 @@ function parseArgs(argv) {
       case '-f':
       case '--fallback': {
         options.fallback = true;
+        break;
+      }
+
+      case '-p':
+      case '--production': {
+        options.production = true;
         break;
       }
 
@@ -536,6 +557,37 @@ function isMakefile(path_, stat) {
 }
 
 /*
+ * GYP Cleaning
+ */
+
+function isGYPDir(path_, stat) {
+  if (!stat.isDirectory())
+    return false;
+
+  if (path.basename(path_) !== 'build')
+    return false;
+
+  for (const dir of [path_,
+                     path.join(path_, 'Debug'),
+                     path.join(path_, 'Release')]) {
+    let list;
+
+    try {
+      list = fs.readdirSync(dir);
+    } catch (e) {
+      continue;
+    }
+
+    for (const name of list) {
+      if (path.extname(name) === '.node')
+        return true;
+    }
+  }
+
+  return false;
+}
+
+/*
  * Cleaning
  */
 
@@ -558,6 +610,9 @@ function isDirty(path_, stat) {
     case '.so':
       return stat.isFile() || stat.isSymbolicLink();
   }
+
+  if (isGYPDir(path_, stat))
+    return true;
 
   if (process.platform === 'win32') {
     return isTargetDir(path_, stat)
