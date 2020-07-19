@@ -561,6 +561,9 @@ function findCMake() {
     for (const prefix of [process.env.LOCALAPPDATA,
                           process.env.PROGRAMFILES,
                           process.env['PROGRAMFILES(X86)']]) {
+      if (!prefix)
+        continue;
+
       const path_ = path.join(prefix, 'CMake', 'bin', 'cmake.exe');
 
       try {
