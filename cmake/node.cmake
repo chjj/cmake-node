@@ -1,4 +1,4 @@
-# node.cmake - cmake wrapper for node.js
+# node.cmake - node.js toolchain for cmake
 # Copyright (c) 2020, Christopher Jeffrey (MIT License).
 # https://github.com/chjj/node-cmk
 

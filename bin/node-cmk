@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /*!
- * node-cmk - cmake toolchain for node.js
+ * node-cmk - node.js toolchain for cmake
  * Copyright (c) 2020, Christopher Jeffrey (MIT License).
  * https://github.com/chjj/node-cmk
  */

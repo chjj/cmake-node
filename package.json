@@ -1,7 +1,7 @@
 {
   "name": "node-cmk",
   "version": "0.0.0",
-  "description": "cmake toolchain for node.js",
+  "description": "node.js toolchain for cmake",
   "keywords": [
     "build",
     "cmake",
