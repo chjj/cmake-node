@@ -4,14 +4,19 @@ Node.js toolchain for CMake.
 
 ## Design
 
-cmake-node is very lightweight and requires no dependencies. This provides a nice
-alternative to node-gyp and cmake-js, which pull in half of npm just to build a
-project.
+cmake-node provides a node.js toolchain file for CMake which exposes two
+functions (`add_node_library`, `add_node_module`), and attempts to avoid
+modification of the global state.
+
+cmake-node is very lightweight and requires no dependencies. This provides a
+nice alternative to node-gyp and cmake-js, which pull in half of npm just to
+build a project.
 
 The latest NAPI headers are bundled and automatically added to your include
 paths. While there is a chance cmake-node could fall behind in updating these
 headers, it should not be that severe of a problem as NAPI provides a stable
-ABI. NAN support is intentionally excluded for this reason.
+ABI. Support for other node headers (v8, node, openssl, nan, etc) is
+intentionally excluded for this reason.
 
 Auto-downloading is only necessary for the windows `node.lib` file. Builds on
 unix will never do any network IO.
@@ -37,6 +42,48 @@ To build:
 ``` bash
 $ cmake-node rebuild
 ```
+
+To load (CJS):
+
+``` js
+const cmake = require('cmake-node');
+const binding = cmake.load('my_project', __dirname);
+```
+
+To load (ESM):
+
+``` js
+import cmake from 'cmake-node';
+
+const binding = cmake.load('my_project', import.meta.url);
+```
+
+## Building for production
+
+cmake-node commands accept a `--production` flag which will clean the workspace
+for release. This removes all files generated during the build aside from your
+resulting `.node` file.
+
+``` bash
+$ cmake-node rebuild --production
+```
+
+It is recommended to put this in your package.json's `install` script.
+
+## Fallback Mode (for node-gyp)
+
+node-gyp is _the_ build system for node.js. To cope with this unfortunate
+reality, and to ease transition away from node-gyp, cmake-node offers a
+fallback option for users who are willing to also provide a binding.gyp file.
+
+``` bash
+$ cmake-node rebuild --fallback
+```
+
+The above command will fall back to node-gyp if CMake is not installed on the
+system (with limited support for cmake-node command line flags). cmake-node
+accomplishes this by checking for usual global install locations for node-gyp
+(this includes checking for npm's bundled node-gyp).
 
 ## Usage
 
