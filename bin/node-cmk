@@ -87,7 +87,7 @@ async function configure(options, args) {
                          ...args,
                          '..'], build);
   } else {
-    const args = [
+    const argv = [
       '-G', 'Unix Makefiles',
       '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`
     ];
@@ -95,16 +95,16 @@ async function configure(options, args) {
     if (process.platform === 'aix' || process.platform === 'os390') {
       const NODE_EXP = options.exp || getNodeExp();
 
-      args.push('-D', `NODE_EXP=${NODE_EXP}`);
+      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
     }
 
     if (options.config)
-      args.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
+      argv.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
 
-    args.push(...args);
-    args.push('..');
+    argv.push(...args);
+    argv.push('..');
 
-    exec(options.cmake, args, build);
+    exec(options.cmake, argv, build);
   }
 }
 
