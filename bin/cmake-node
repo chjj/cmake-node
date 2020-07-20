@@ -89,6 +89,7 @@ async function configure(options, args) {
   } else {
     const argv = [
       '-G', 'Unix Makefiles',
+      '-D', `CMAKE_BUILD_TYPE=${options.config}`,
       '-D', `CMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}`
     ];
 
@@ -97,9 +98,6 @@ async function configure(options, args) {
 
       argv.push('-D', `NODE_EXP=${NODE_EXP}`);
     }
-
-    if (options.config)
-      argv.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
 
     argv.push(...args);
     argv.push('..');
@@ -110,14 +108,16 @@ async function configure(options, args) {
 
 async function build(options, args) {
   const build = path.join(options.root, 'build');
-  const config = options.config || 'Release';
 
   mkdirp(build, 0o755);
 
-  if (process.platform === 'win32')
-    exec(options.cmake, ['--build', '.', '--config', config, ...args], build);
-  else
+  if (process.platform === 'win32') {
+    exec(options.cmake, ['--build', '.',
+                         '--config', options.config,
+                         ...args], build);
+  } else {
     exec(options.cmake, ['--build', '.', ...args], build);
+  }
 
   if (options.production)
     await clean(options, []);
@@ -167,7 +167,7 @@ async function rebuild(options, args) {
 
 function parseArgs(argv) {
   const options = {
-    config: null,
+    config: 'Release',
     cmake: findCMake(),
     dist: 'https://nodejs.org/dist',
     root: '.',

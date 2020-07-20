@@ -2,11 +2,11 @@
 # Copyright (c) 2020, Christopher Jeffrey (MIT License).
 # https://github.com/chjj/cmake-node
 
-if(DEFINED NODE_CMAKE_)
+if(DEFINED __NODEJS_CMAKE__)
   return()
-else()
-  set(NODE_CMAKE_ 1)
 endif()
+
+set(__NODEJS_CMAKE__ 1)
 
 if(WIN32)
   set(NODE_BIN "node.exe" CACHE STRING "Node.js executable name")
