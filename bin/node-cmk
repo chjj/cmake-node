@@ -481,7 +481,6 @@ function getArgs(argv) {
 
 function isCMakeRoot(root) {
   try {
-    fs.statSync(path.join(root, 'package.json'));
     fs.statSync(path.join(root, 'CMakeLists.txt'));
     return true;
   } catch (e) {
@@ -491,7 +490,6 @@ function isCMakeRoot(root) {
 
 function isGYPRoot(root) {
   try {
-    fs.statSync(path.join(root, 'package.json'));
     fs.statSync(path.join(root, 'binding.gyp'));
     return true;
   } catch (e) {
