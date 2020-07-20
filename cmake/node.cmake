@@ -47,7 +47,7 @@ if(WIN32)
 endif()
 
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400")
-  list(APPEND _node_ldflags "-bimport:${NODE_EXP}")
+  list(APPEND _node_ldflags "-Wl,-bimport:${NODE_EXP}")
 endif()
 
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "OS390")
