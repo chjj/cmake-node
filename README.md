@@ -1,22 +1,22 @@
-# node-cmk
+# cmake-node
 
 Node.js toolchain for CMake.
 
 ## Design
 
-node-cmk is very lightweight and requires no dependencies. This provides a nice
+cmake-node is very lightweight and requires no dependencies. This provides a nice
 alternative to node-gyp and cmake-js, which pull in half of npm just to build a
 project.
 
 The latest NAPI headers are bundled and automatically added to your include
-paths. While there is a chance node-cmk could fall behind in updating these
+paths. While there is a chance cmake-node could fall behind in updating these
 headers, it should not be that severe of a problem as NAPI provides a stable
 ABI. NAN support is intentionally excluded for this reason.
 
 Auto-downloading is only necessary for the windows `node.lib` file. Builds on
 unix will never do any network IO.
 
-While node-cmk requires no _node.js_ dependencies, it does require that the
+While cmake-node requires no _node.js_ dependencies, it does require that the
 user have certain other dependencies: this includes CMake itself, MSVS on
 windows, and Make on unix.
 
@@ -35,13 +35,13 @@ target_link_libraries(my_project PRIVATE my_library)
 To build:
 
 ``` bash
-$ node-cmk rebuild
+$ cmake-node rebuild
 ```
 
 ## Usage
 
 ```
-  Usage: node-cmk [options] [command] -- [cmake args]
+  Usage: cmake-node [options] [command] -- [cmake args]
 
   Options:
 

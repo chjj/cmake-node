@@ -1,5 +1,5 @@
 {
-  "name": "node-cmk",
+  "name": "cmake-node",
   "version": "0.0.8",
   "description": "node.js toolchain for cmake",
   "keywords": [
@@ -8,18 +8,18 @@
     "gyp"
   ],
   "license": "MIT",
-  "repository": "git://github.com/chjj/node-cmk.git",
-  "homepage": "https://github.com/chjj/node-cmk",
+  "repository": "git://github.com/chjj/cmake-node.git",
+  "homepage": "https://github.com/chjj/cmake-node",
   "bugs": {
-    "url": "https://github.com/chjj/node-cmk/issues"
+    "url": "https://github.com/chjj/cmake-node/issues"
   },
   "author": "Christopher Jeffrey <chjjeffrey@gmail.com>",
   "main": "./lib/cmake.js",
   "bin": {
-    "node-cmk": "./bin/node-cmk"
+    "cmake-node": "./bin/cmake-node"
   },
   "scripts": {
-    "lint": "eslint bin/node-cmk lib/ || exit 0"
+    "lint": "eslint bin/cmake-node lib/ || exit 0"
   },
   "engines": {
     "node": ">=8.0.0"

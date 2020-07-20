@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /*!
- * node-cmk - node.js toolchain for cmake
+ * cmake-node - node.js toolchain for cmake
  * Copyright (c) 2020, Christopher Jeffrey (MIT License).
- * https://github.com/chjj/node-cmk
+ * https://github.com/chjj/cmake-node
  */
 
 'use strict';
 
-process.title = 'node-cmk';
+process.title = 'cmake-node';
 
 const cp = require('child_process');
 const fs = require('fs');
@@ -33,7 +33,7 @@ const VERSION = '0.0.8';
 const NAPI_VERSION = '14.5.0';
 
 const HELP = `
-  Usage: node-cmk [options] [command] -- [cmake args]
+  Usage: cmake-node [options] [command] -- [cmake args]
 
   Options:
 
@@ -61,7 +61,7 @@ const HELP = `
 
   node@${process.versions.node} - ${process.execPath}
   napi@${NAPI_VERSION} - ${path.resolve(__dirname, '..', 'include', 'node')}
-  node-cmk@${VERSION} - ${__filename}
+  cmake-node@${VERSION} - ${__filename}
 `;
 
 /*
@@ -405,7 +405,7 @@ async function getNodeLib(dist) {
   if (!LOCALAPPDATA)
     LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
 
-  const file = path.resolve(LOCALAPPDATA, 'node-cmk', 'Cache', name);
+  const file = path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache', name);
 
   let stat = null;
 
