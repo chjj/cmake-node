@@ -20,7 +20,7 @@ const path = require('path');
  */
 
 const NODE_BIN = path.basename(process.execPath);
-const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'node.cmake');
+const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'NodeJS.cmake');
 
 const BUILD_TYPES = [
   'Debug',
