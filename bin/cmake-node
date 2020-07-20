@@ -30,7 +30,7 @@ const BUILD_TYPES = [
 ];
 
 const VERSION = '0.0.9';
-const NAPI_VERSION = '14.5.0';
+const NAPI_VERSION = '4';
 
 const HELP = `
   Usage: cmake-node [options] [command] -- [cmake args]
