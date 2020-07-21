@@ -29,7 +29,7 @@ const BUILD_TYPES = [
   'RelWithDebInfo'
 ];
 
-const VERSION = '0.0.11';
+const VERSION = '0.0.12';
 const NAPI_VERSION = '4';
 
 const HELP = `
