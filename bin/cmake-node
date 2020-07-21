@@ -128,8 +128,12 @@ async function clean(options, args) {
 
   let exclude = null;
 
-  if (options.production) {
-    if (process.platform === 'win32') {
+  if (options.production && fs.existsSync(build)) {
+    const file = findBinding(build);
+
+    if (file) {
+      exclude = file;
+    } else {
       for (const type of BUILD_TYPES) {
         const dir = path.join(build, type);
 
@@ -138,8 +142,6 @@ async function clean(options, args) {
           break;
         }
       }
-    } else {
-      exclude = findBinding(build);
     }
   }
 
@@ -402,15 +404,7 @@ async function getNodeLib(dist) {
 
   const file = path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache', name);
 
-  let stat = null;
-
-  try {
-    stat = fs.statSync(file);
-  } catch (e) {
-    ;
-  }
-
-  if (!stat || stat.size === 0)
+  if (!fs.existsSync(file))
     await download(url, file);
 
   return file;
@@ -427,11 +421,8 @@ function getNodeExp() {
   const prefix = path.resolve(process.execPath, '..', '..');
   const path_ = path.join(prefix, name);
 
-  try {
-    fs.closeSync(fs.openSync(path_, 'r'));
-  } catch (e) {
+  if (!fs.existsSync(path_))
     return path.basename(name);
-  }
 
   return path_;
 }
@@ -475,21 +466,11 @@ function getArgs(argv) {
 }
 
 function isCMakeRoot(root) {
-  try {
-    fs.statSync(path.join(root, 'CMakeLists.txt'));
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return fs.existsSync(path.join(root, 'CMakeLists.txt'));
 }
 
 function isGYPRoot(root) {
-  try {
-    fs.statSync(path.join(root, 'binding.gyp'));
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return fs.existsSync(path.join(root, 'binding.gyp'));
 }
 
 function findBinding(root) {
@@ -565,12 +546,8 @@ function findCMake() {
 
       const path_ = path.join(prefix, 'CMake', 'bin', 'cmake.exe');
 
-      try {
-        fs.statSync(path_);
+      if (fs.existsSync(path_))
         return path_;
-      } catch (e) {
-        ;
-      }
     }
 
     return 'cmake.exe';
@@ -633,12 +610,8 @@ function findGYP(root) {
                           'node-gyp.js'));
 
   for (const path_ of paths) {
-    try {
-      fs.statSync(path_);
+    if (fs.existsSync(path_))
       return path_;
-    } catch (e) {
-      ;
-    }
   }
 
   return 'node-gyp';
@@ -654,11 +627,8 @@ function runGYP(gyp, cmd, root) {
   if (isPath(gyp)) {
     gyp = path.resolve(gyp);
 
-    try {
-      fs.statSync(gyp);
-    } catch (e) {
+    if (!fs.existsSync(gyp))
       throw new Error(`GYP not available (${gyp}).`);
-    }
 
     exec(process.execPath, [gyp, cmd], root);
   } else {
