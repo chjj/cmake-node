@@ -4,19 +4,20 @@ Node.js toolchain for CMake.
 
 ## Design
 
-cmake-node provides a node.js toolchain file for CMake which exposes two
-functions (`add_node_library`, `add_node_module`), and attempts to avoid
-modification of the global state.
+cmake-node provides a node.js toolchain file and an accompanying wrapper for
+CMake. In contrast to node-gyp and other projects, it avoids modification of
+the global state, and instead exposes just two functions: `add_node_library`
+and `add_node_module`.
 
 cmake-node is very lightweight and requires no dependencies. This provides a
-nice alternative to node-gyp and cmake-js, which pull in half of npm just to
+nice alternative to other node build systems, which pull in half of npm just to
 build a project.
 
 The latest NAPI headers are bundled and automatically added to your include
 paths. While there is a chance cmake-node could fall behind in updating these
-headers, it should not be that severe of a problem as NAPI provides a stable
-ABI. Support for other node headers (v8, node, openssl, nan, etc) is
-intentionally excluded for this reason.
+headers, it should not be that severe of a issue as NAPI provides a stable ABI.
+Support for other node headers (v8, node, openssl, nan, etc) is intentionally
+excluded for this reason.
 
 Auto-downloading is only necessary for the windows `node.lib` file. Builds on
 unix will never do any network IO.
@@ -31,7 +32,9 @@ CMakeLists.txt:
 
 ``` cmake
 project(my_project LANGUAGES C)
+
 add_node_library(my_library STATIC src/my_lib.c)
+
 add_node_module(my_project src/my_code.c)
 target_compile_definitions(my_project PRIVATE FOOBAR=1)
 target_link_libraries(my_project PRIVATE my_library)
