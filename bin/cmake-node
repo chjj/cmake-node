@@ -354,18 +354,13 @@ const commands = {
 async function main(argv) {
   const options = parseArgs(argv);
 
-  if (!hasExecutable(options.cmake)) {
-    if (options.fallback) {
-      if (!isGYPRoot(options.root))
-        throw new Error(`Invalid GYP root: ${options.root}`);
-
-      runGYP(options.gyp, options.cmd, options.root);
-
-      return;
-    }
-
-    throw new Error(`CMake not available (${options.cmake}).`);
+  if (shouldFallback(options)) {
+    runGYP(options.gyp, options.cmd, options.root);
+    return;
   }
+
+  if (!hasExecutable(options.cmake))
+    throw new Error(`CMake not available (${options.cmake}).`);
 
   if (!isCMakeRoot(options.root))
     throw new Error(`Invalid CMake root: ${options.root}`);
@@ -544,6 +539,17 @@ function hasExecutable(file) {
   }
 
   return !result.error && !result.signal && result.status === 0;
+}
+
+function shouldFallback(options) {
+  if (!options.fallback)
+    return false;
+
+  if (!isGYPRoot(options.root))
+    return false;
+
+  return !isCMakeRoot(options.root)
+      || !hasExecutable(options.cmake);
 }
 
 function findCMake() {
