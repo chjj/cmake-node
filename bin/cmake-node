@@ -443,7 +443,7 @@ function getNodeExp() {
   const path_ = path.join(prefix, name);
 
   if (!fs.existsSync(path_))
-    return path.basename(name);
+    throw new Error(`Could not find exports file: ${path_}`);
 
   return path_;
 }
@@ -455,8 +455,21 @@ function getNodeExp() {
 function getArgs(argv) {
   const args = [];
 
+  let done = false;
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+
+    if (done) {
+      args.push(arg);
+      continue;
+    }
+
+    if (i >= 2 && arg === '--') {
+      args.push(arg);
+      done = true;
+      continue;
+    }
 
     if (arg.startsWith('--')) {
       // e.g. --opt
