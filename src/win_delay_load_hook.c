@@ -58,7 +58,7 @@ load_exe_hook(unsigned int event, DelayLoadInfo *info) {
   return (FARPROC)m;
 }
 
-ExternC PfnDliHook __pfnDliNotifyHook2 = load_exe_hook;
+PfnDliHook __pfnDliNotifyHook2 = load_exe_hook;
 
 #pragma managed(pop)
 
