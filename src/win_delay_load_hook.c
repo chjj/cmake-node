@@ -1,12 +1,25 @@
-/*
- * When this file is linked to a DLL, it sets up a delay-load hook that
- * intervenes when the DLL is trying to load the host executable
- * dynamically. Instead of trying to locate the .exe file it'll just
- * return a handle to the process image.
+/*!
+ * win_delay_load_hook.c - notify hook for windows
+ * Copyright (c) 2020, Christopher Jeffrey (MIT License).
+ * https://github.com/chjj/cmake-node
  *
- * This allows compiled addons to work when the host executable is renamed.
+ * Parts of this software are based on nodejs/node-gyp:
+ *   Copyright (c) 2012, Nathan Rajlich (MIT License).
+ *   https://github.com/nodejs/node-gyp
  *
- * Modified to compile as C.
+ * Resources:
+ *   https://github.com/nodejs/node-gyp/blob/master/src/win_delay_load_hook.cc
+ *   https://docs.microsoft.com/en-us/cpp/build/reference/notification-hooks
+ *
+ * Explanation:
+ *
+ *   When this file is linked to a DLL, it sets up a delay-load
+ *   hook that intervenes when the DLL is trying to load the host
+ *   executable dynamically. Instead of trying to locate the .exe
+ *   file it'll just return a handle to the process image.
+ *
+ *   This allows compiled addons to work when the host executable
+ *   is renamed. Note that this file was modified to compile as C.
  */
 
 #ifdef _MSC_VER
