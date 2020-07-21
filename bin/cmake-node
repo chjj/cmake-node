@@ -731,7 +731,7 @@ function _remove(path_, exclude) {
           return 0;
 
         if (e.code === 'ENOTEMPTY' && process.platform === 'win32') {
-          if (tries < 5 + 1) {
+          if (tries < 5) {
             tries += 1;
             continue;
           }
