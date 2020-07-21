@@ -58,6 +58,7 @@ const HELP = `
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package
+    ui                   open ui for package (ccmake/cmake-gui)
 
   node@${process.versions.node} - ${process.execPath}
   napi@${NAPI_VERSION} - ${path.resolve(__dirname, '..', 'include', 'node')}
@@ -161,6 +162,25 @@ async function rebuild(options, args) {
   await clean({ root: options.root }, []);
   await configure(options, args);
   await build(options, []);
+}
+
+async function ui(options, args) {
+  let name = 'ccmake';
+
+  if (process.platform === 'win32')
+    name = 'cmake-gui.exe';
+
+  if (isPath(options.cmake))
+    name = path.resolve(options.cmake, '..', name);
+
+  if (process.platform === 'win32') {
+    cp.spawnSync(name, [...args, 'build'], {
+      cwd: path.resolve(options.root),
+      stdio: 'inherit'
+    });
+  } else {
+    exec(name, [...args, 'build'], options.root);
+  }
 }
 
 /*
@@ -350,7 +370,8 @@ const commands = {
   build,
   clean,
   reconfigure,
-  rebuild
+  rebuild,
+  ui
 };
 
 async function main(argv) {

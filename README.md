@@ -113,6 +113,7 @@ accomplishes this by checking for usual global install locations for node-gyp
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package
+    ui                   open ui for package (ccmake/cmake-gui)
 ```
 
 ## Contribution and License Agreement
