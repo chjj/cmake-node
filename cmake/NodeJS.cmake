@@ -65,25 +65,33 @@ endif()
 
 function(add_node_library target type)
   set(sources ${ARGV})
+
   list(REMOVE_AT sources 0)
   list(REMOVE_AT sources 0)
+
   add_library(${target} ${type} ${sources})
+
   target_compile_definitions(${target} PRIVATE ${_node_defines})
   target_compile_options(${target} PRIVATE ${_node_cflags})
   target_include_directories(${target} PRIVATE ${_node_includes})
+
   set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE ON)
 endfunction()
 
 function(add_node_module target)
   set(sources ${ARGV})
+
   list(REMOVE_AT sources 0)
+
   add_library(${target} SHARED ${sources} ${_node_sources})
+
   target_compile_definitions(${target} PRIVATE ${_node_defines}
                              NODE_GYP_MODULE_NAME=${target})
   target_compile_options(${target} PRIVATE ${_node_cflags})
   target_include_directories(${target} PRIVATE ${_node_includes})
   target_link_options(${target} PRIVATE ${_node_ldflags})
   target_link_libraries(${target} PRIVATE ${_node_libs})
+
   set_property(TARGET ${target} PROPERTY PREFIX "")
   set_property(TARGET ${target} PROPERTY SUFFIX ".node")
   set_property(TARGET ${target} PROPERTY MACOSX_RPATH ON)
