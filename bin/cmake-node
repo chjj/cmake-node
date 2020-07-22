@@ -19,7 +19,7 @@ const path = require('path');
  * Constants
  */
 
-const VERSION = '0.0.14';
+const VERSION = '0.0.15';
 const NAPI_VERSION = '4';
 const NODE_BIN = path.basename(process.execPath);
 const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'NodeJS.cmake');

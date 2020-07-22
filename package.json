@@ -1,6 +1,6 @@
 {
   "name": "cmake-node",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "node.js toolchain for cmake",
   "keywords": [
     "build",
