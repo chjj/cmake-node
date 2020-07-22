@@ -19,18 +19,41 @@ const path = require('path');
  * Constants
  */
 
-const NODE_BIN = path.basename(process.execPath);
-const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'NodeJS.cmake');
-
-const BUILD_TYPES = [
-  'Debug',
-  'Release',
-  'MinSizeRel',
-  'RelWithDebInfo'
-];
-
 const VERSION = '0.0.14';
 const NAPI_VERSION = '4';
+const NODE_BIN = path.basename(process.execPath);
+const TOOLCHAIN = path.resolve(__dirname, '..', 'cmake', 'NodeJS.cmake');
+const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
+const WINDOWS = process.platform === 'win32';
+
+const IGNORE_EXTS = [
+  '.dll',
+  '.dylib',
+  '.exp',
+  '.ilk',
+  '.lib',
+  '.node',
+  '.pdb',
+  '.so',
+  '.x'
+];
+
+const GYP_COMMANDS = [
+  'build',
+  'clean',
+  'configure',
+  'reconfigure',
+  'rebuild',
+  'install'
+];
+
+const UNIX_PREFIXES = [
+  NODE_PREFIX,
+  '/usr',
+  '/usr/local',
+  '/opt',
+  '/opt/local'
+];
 
 const HELP = `
   Usage: cmake-node [options] [command] -- [cmake args]
@@ -70,7 +93,7 @@ const HELP = `
  */
 
 async function install(options, args) {
-  if (process.platform === 'win32')
+  if (WINDOWS)
     await getNodeLib(options.dist);
 }
 
@@ -79,7 +102,7 @@ async function configure(options, args) {
 
   mkdirp(build, 0o755);
 
-  if (process.platform === 'win32') {
+  if (WINDOWS) {
     const NODE_LIB = options.lib || (await getNodeLib(options.dist));
 
     exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
@@ -112,7 +135,7 @@ async function build(options, args) {
 
   mkdirp(build, 0o755);
 
-  if (process.platform === 'win32') {
+  if (WINDOWS) {
     exec(options.cmake, ['--build', '.',
                          '--config', options.config,
                          ...args], build);
@@ -127,26 +150,10 @@ async function build(options, args) {
 async function clean(options, args) {
   const build = path.join(options.root, 'build');
 
-  let exclude = null;
-
-  if (options.production && fs.existsSync(build)) {
-    const file = findBinding(build);
-
-    if (file) {
-      exclude = file;
-    } else {
-      for (const type of BUILD_TYPES) {
-        const dir = path.join(build, type);
-
-        if (findBinding(dir)) {
-          exclude = dir;
-          break;
-        }
-      }
-    }
-  }
-
-  remove(build, exclude);
+  if (options.production)
+    remove(build, IGNORE_EXTS);
+  else
+    remove(build);
 }
 
 async function reconfigure(options, args) {
@@ -165,15 +172,12 @@ async function rebuild(options, args) {
 }
 
 async function ui(options, args) {
-  let name = 'ccmake';
-
-  if (process.platform === 'win32')
-    name = 'cmake-gui.exe';
+  let name = WINDOWS ? 'cmake-gui.exe' : 'ccmake';
 
   if (isPath(options.cmake))
     name = path.resolve(options.cmake, '..', name);
 
-  if (process.platform === 'win32') {
+  if (WINDOWS) {
     cp.spawnSync(name, [...args, 'build'], {
       cwd: path.resolve(options.root),
       stdio: 'inherit'
@@ -378,7 +382,16 @@ async function main(argv) {
   const options = parseArgs(argv);
 
   if (shouldFallback(options)) {
+    if (options.production && options.cmd === 'clean') {
+      await clean(options, []);
+      return;
+    }
+
     runGYP(options.gyp, options.cmd, options.root);
+
+    if (options.production && options.cmd.endsWith('build'))
+      await clean(options, []);
+
     return;
   }
 
@@ -439,8 +452,7 @@ function getNodeExp() {
   else
     name = '/lib/libnode.x';
 
-  const prefix = path.resolve(process.execPath, '..', '..');
-  const path_ = path.join(prefix, name);
+  const path_ = path.join(NODE_PREFIX, name);
 
   if (!fs.existsSync(path_))
     throw new Error(`Could not find exports file: ${path_}`);
@@ -507,23 +519,6 @@ function isGYPRoot(root) {
   return fs.existsSync(path.join(root, 'binding.gyp'));
 }
 
-function findBinding(root) {
-  let list;
-
-  try {
-    list = fs.readdirSync(root);
-  } catch (e) {
-    return null;
-  }
-
-  for (const name of list) {
-    if (path.extname(name) === '.node')
-      return path.join(root, name);
-  }
-
-  return null;
-}
-
 function exec(file, args, cwd = '.') {
   const result = cp.spawnSync(file, args, {
     cwd: path.resolve(cwd),
@@ -560,6 +555,9 @@ function shouldFallback(options) {
   if (!options.fallback)
     return false;
 
+  if (!GYP_COMMANDS.includes(options.cmd))
+    return false;
+
   if (!isGYPRoot(options.root))
     return false;
 
@@ -568,35 +566,44 @@ function shouldFallback(options) {
 }
 
 function findCMake() {
-  if (process.platform === 'win32') {
-    if (hasExecutable('cmake.exe'))
-      return 'cmake.exe';
+  const cmake = WINDOWS ? 'cmake.exe' : 'cmake';
 
+  if (hasExecutable(cmake))
+    return cmake;
+
+  const paths = [];
+
+  if (WINDOWS) {
     for (const prefix of [process.env.LOCALAPPDATA,
                           process.env.PROGRAMFILES,
                           process.env['PROGRAMFILES(X86)']]) {
       if (!prefix)
         continue;
 
-      const path_ = path.join(prefix, 'CMake', 'bin', 'cmake.exe');
-
-      if (fs.existsSync(path_))
-        return path_;
+      paths.push(path.join(prefix, 'CMake', 'bin', 'cmake.exe'));
     }
-
-    return 'cmake.exe';
+  } else {
+    for (const prefix of UNIX_PREFIXES)
+      paths.push(path.join(prefix, 'bin', 'cmake'));
   }
 
-  return 'cmake';
+  for (const path_ of paths) {
+    if (fs.existsSync(path_))
+      return path_;
+  }
+
+  return cmake;
 }
 
 function findGYP(root) {
-  if (hasExecutable('node-gyp'))
-    return 'node-gyp';
+  const gyp = WINDOWS ? 'node-gyp.cmd' : 'node-gyp';
+
+  if (hasExecutable(gyp))
+    return gyp;
 
   const paths = [];
 
-  if (process.platform === 'win32') {
+  if (WINDOWS) {
     let {APPDATA} = process.env;
 
     if (!APPDATA)
@@ -618,9 +625,7 @@ function findGYP(root) {
                             'bin',
                             'node-gyp.js'));
   } else {
-    const PREFIX = path.resolve(process.execPath, '..', '..');
-
-    for (const prefix of [PREFIX, '/usr', '/usr/local']) {
+    for (const prefix of UNIX_PREFIXES) {
       const modules = path.join(prefix, 'lib', 'node_modules');
 
       paths.push(path.join(modules,
@@ -648,7 +653,7 @@ function findGYP(root) {
       return path_;
   }
 
-  return 'node-gyp';
+  return gyp;
 }
 
 function runGYP(gyp, cmd, root) {
@@ -658,7 +663,7 @@ function runGYP(gyp, cmd, root) {
   if (cmd === 'reconfigure')
     cmd = 'configure';
 
-  if (isPath(gyp)) {
+  if (path.extname(gyp) === '.js') {
     gyp = path.resolve(gyp);
 
     if (!fs.existsSync(gyp))
@@ -674,10 +679,9 @@ function runGYP(gyp, cmd, root) {
 }
 
 function isPath(str) {
-  if (process.platform === 'win32') {
-    if (str.includes('/'))
-      return true;
-  }
+  if (WINDOWS && str.includes('/'))
+    return true;
+
   return str.includes(path.sep);
 }
 
@@ -685,7 +689,7 @@ function safeStat(path_) {
   try {
     return fs.lstatSync(path_);
   } catch (e) {
-    if (e.code === 'EPERM' && process.platform === 'win32') {
+    if (e.code === 'EPERM' && WINDOWS) {
       try {
         fs.chmodSync(path_, 0o666);
       } catch (e) {
@@ -697,17 +701,14 @@ function safeStat(path_) {
   }
 }
 
-function remove(path_, exclude = null) {
+function remove(path_, ignore = []) {
   path_ = path.normalize(path_);
-
-  if (exclude)
-    exclude = path.normalize(exclude);
 
   let tries = 0;
 
   for (;;) {
     try {
-      _remove(path_, exclude);
+      _remove(path_, ignore);
     } catch (e) {
       const retry = e.code === 'EBUSY'
                  || e.code === 'ENOTEMPTY'
@@ -727,11 +728,15 @@ function remove(path_, exclude = null) {
   }
 }
 
-function _remove(path_, exclude) {
+function _remove(path_, ignore) {
   let stat = null;
 
-  if (exclude && path_ === exclude)
-    return 1;
+  if (ignore.length > 0) {
+    const ext = path.extname(path_);
+
+    if (ignore.includes(ext))
+      return 1;
+  }
 
   try {
     stat = safeStat(path_);
@@ -755,7 +760,7 @@ function _remove(path_, exclude) {
     }
 
     for (const name of list)
-      flag |= _remove(path.join(path_, name), exclude);
+      flag |= _remove(path.join(path_, name), ignore);
 
     while (!flag) {
       try {
@@ -764,7 +769,7 @@ function _remove(path_, exclude) {
         if (e.code === 'ENOENT')
           return 0;
 
-        if (e.code === 'ENOTEMPTY' && process.platform === 'win32') {
+        if (e.code === 'ENOTEMPTY' && WINDOWS) {
           if (tries < 5) {
             tries += 1;
             continue;
