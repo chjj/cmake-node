@@ -29,11 +29,11 @@ list(APPEND _node_defines BUILDING_NODE_EXTENSION)
 list(APPEND _node_includes "${_node_dir}/../include/node")
 
 if(WIN32)
-  list(APPEND _node_libs "${NODE_LIB}")
-  list(APPEND _node_defines NODE_HOST_BINARY="${NODE_BIN}")
   list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.c")
+  list(APPEND _node_defines NODE_HOST_BINARY="${NODE_BIN}")
   list(APPEND _node_ldflags /delayload:${NODE_BIN})
   list(APPEND _node_ldflags /ignore:4199)
+  list(APPEND _node_libs "${NODE_LIB}")
 endif()
 
 if(APPLE)
