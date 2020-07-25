@@ -8,27 +8,6 @@ endif()
 
 set(__NODEJS_CMAKE__ 1)
 
-# cmake-node overwrites CMAKE_TOOLCHAIN_FILE to get an early
-# include. Allow the user to pass NODE_TOOLCHAIN_FILE if they
-# want to use another toolchain file. We try to replicate the
-# behavior of CMAKE_TOOLCHAIN_FILE here.
-if(NODE_TOOLCHAIN_FILE)
-  include("${CMAKE_BINARY_DIR}/${NODE_TOOLCHAIN_FILE}" OPTIONAL
-          RESULT_VARIABLE _INCLUDED_NODE_TOOLCHAIN_FILE)
-  if(NOT _INCLUDED_NODE_TOOLCHAIN_FILE)
-     include("${NODE_TOOLCHAIN_FILE}" OPTIONAL
-             RESULT_VARIABLE _INCLUDED_NODE_TOOLCHAIN_FILE)
-  endif()
-  if(_INCLUDED_NODE_TOOLCHAIN_FILE)
-    set(NODE_TOOLCHAIN_FILE "${_INCLUDED_NODE_TOOLCHAIN_FILE}" CACHE
-        FILEPATH "The cmake-node toolchain file" FORCE)
-  else()
-    message(FATAL_ERROR "Could not find toolchain file: ${NODE_TOOLCHAIN_FILE}")
-    set(NODE_TOOLCHAIN_FILE "NOTFOUND" CACHE
-        FILEPATH "The cmake-node toolchain file" FORCE)
-  endif()
-endif()
-
 if(CMAKE_SYSTEM_NAME)
   set(NODE_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
   set(NODE_SYSTEM_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
@@ -112,13 +91,7 @@ function(add_node_module target)
   if(COMMAND target_link_options)
     target_link_options(${target} PRIVATE ${_node_ldflags})
   else()
-    # Use a loop instead of string(REPLACE) to
-    # avoid modifying file paths with semicolons.
-    set(ldflags "")
-    foreach(flag IN LISTS _node_ldflags)
-      set(ldflags "${ldflags} ${flag}")
-    endforeach()
-    string(STRIP "${ldflags}" ldflags)
+    string(REPLACE ";" " " ldflags "${_node_ldflags}")
     set_property(TARGET ${target} PROPERTY LINK_FLAGS "${ldflags}")
   endif()
 

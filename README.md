@@ -31,6 +31,8 @@ windows, and Make on unix.
 CMakeLists.txt:
 
 ``` cmake
+include(NodeJS)
+
 project(my_project LANGUAGES C)
 
 add_node_library(my_library STATIC src/my_lib.c)
@@ -100,7 +102,7 @@ accomplishes this by checking for usual global install locations for node-gyp
     -C, --cmake <path>   path to cmake binary (default: cmake/cmake.exe)
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
-    -l, --location       print location of toolchain file
+    -l, --location       print location of the include directory
     -f, --fallback       fall back to node-gyp if cmake is not found
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp)
     -p, --production     clean all files except for .node files
