@@ -1,8 +1,11 @@
 #ifndef SRC_JS_NATIVE_API_TYPES_H_
 #define SRC_JS_NATIVE_API_TYPES_H_
 
-#include <stddef.h>
-#include <stdint.h>
+// This file needs to be compatible with C compilers.
+// This is a public include file, and these includes have essentially
+// became part of it's API.
+#include <stddef.h>  // NOLINT(modernize-deprecated-headers)
+#include <stdint.h>  // NOLINT(modernize-deprecated-headers)
 
 #if !defined __cplusplus || (defined(_MSC_VER) && _MSC_VER < 1900)
     typedef uint16_t char16_t;
@@ -77,7 +80,17 @@ typedef enum {
   napi_closing,
   napi_bigint_expected,
   napi_date_expected,
+  napi_arraybuffer_expected,
+  napi_detachable_arraybuffer_expected,
+  napi_would_deadlock  // unused
 } napi_status;
+// Note: when adding a new enum value to `napi_status`, please also update
+//   * `const int last_status` in the definition of `napi_get_last_error_info()'
+//     in file js_native_api_v8.cc.
+//   * `const char* error_messages[]` in file js_native_api_v8.cc with a brief
+//     message explaining the error.
+//   * the definition of `napi_status` in doc/api/n-api.md to reflect the newly
+//     added value(s).
 
 typedef napi_value (*napi_callback)(napi_env env,
                                     napi_callback_info info);
@@ -105,5 +118,26 @@ typedef struct {
   uint32_t engine_error_code;
   napi_status error_code;
 } napi_extended_error_info;
+
+#if NAPI_VERSION >= 6
+typedef enum {
+  napi_key_include_prototypes,
+  napi_key_own_only
+} napi_key_collection_mode;
+
+typedef enum {
+  napi_key_all_properties = 0,
+  napi_key_writable = 1,
+  napi_key_enumerable = 1 << 1,
+  napi_key_configurable = 1 << 2,
+  napi_key_skip_strings = 1 << 3,
+  napi_key_skip_symbols = 1 << 4
+} napi_key_filter;
+
+typedef enum {
+  napi_key_keep_numbers,
+  napi_key_numbers_to_strings
+} napi_key_conversion;
+#endif  // NAPI_VERSION >= 6
 
 #endif  // SRC_JS_NATIVE_API_TYPES_H_

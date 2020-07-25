@@ -20,7 +20,7 @@ const path = require('path');
  */
 
 const VERSION = '0.1.0';
-const NAPI_VERSION = '4';
+const NAPI_VERSION = 6;
 const NODE_BIN = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');

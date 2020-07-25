@@ -1,9 +1,9 @@
 #ifndef SRC_JS_NATIVE_API_H_
 #define SRC_JS_NATIVE_API_H_
 
-#include <stddef.h>
-#include <stdbool.h>
-#include "js_native_api_types.h"
+// This file needs to be compatible with C compilers.
+#include <stddef.h>   // NOLINT(modernize-deprecated-headers)
+#include <stdbool.h>  // NOLINT(modernize-deprecated-headers)
 
 // Use INT_MAX, this should only be consumed by the pre-processor anyway.
 #define NAPI_VERSION_EXPERIMENTAL 2147483647
@@ -11,16 +11,26 @@
 #ifdef NAPI_EXPERIMENTAL
 #define NAPI_VERSION NAPI_VERSION_EXPERIMENTAL
 #else
-// The baseline version for N-API
-#define NAPI_VERSION 4
+// The baseline version for N-API.
+// The NAPI_VERSION controls which version will be used by default when
+// compilling a native addon. If the addon developer specifically wants to use
+// functions available in a new version of N-API that is not yet ported in all
+// LTS versions, they can set NAPI_VERSION knowing that they have specifically
+// depended on that version.
+#define NAPI_VERSION 6
 #endif
 #endif
+
+#include "js_native_api_types.h"
 
 // If you need __declspec(dllimport), either include <node_api.h> instead, or
 // define NAPI_EXTERN as __declspec(dllimport) on the compiler's command line.
 #ifndef NAPI_EXTERN
   #ifdef _WIN32
     #define NAPI_EXTERN __declspec(dllexport)
+  #elif defined(__wasm32__)
+    #define NAPI_EXTERN __attribute__((visibility("default")))                \
+                        __attribute__((__import_module__("napi")))
   #else
     #define NAPI_EXTERN __attribute__((visibility("default")))
   #endif
@@ -434,7 +444,7 @@ NAPI_EXTERN napi_status napi_reject_deferred(napi_env env,
                                              napi_deferred deferred,
                                              napi_value rejection);
 NAPI_EXTERN napi_status napi_is_promise(napi_env env,
-                                        napi_value promise,
+                                        napi_value value,
                                         bool* is_promise);
 
 // Running a script
@@ -447,7 +457,7 @@ NAPI_EXTERN napi_status napi_adjust_external_memory(napi_env env,
                                                     int64_t change_in_bytes,
                                                     int64_t* adjusted_value);
 
-#ifdef NAPI_EXPERIMENTAL
+#if NAPI_VERSION >= 5
 
 // Dates
 NAPI_EXTERN napi_status napi_create_date(napi_env env,
@@ -461,6 +471,18 @@ NAPI_EXTERN napi_status napi_is_date(napi_env env,
 NAPI_EXTERN napi_status napi_get_date_value(napi_env env,
                                             napi_value value,
                                             double* result);
+
+// Add finalizer for pointer
+NAPI_EXTERN napi_status napi_add_finalizer(napi_env env,
+                                           napi_value js_object,
+                                           void* native_object,
+                                           napi_finalize finalize_cb,
+                                           void* finalize_hint,
+                                           napi_ref* result);
+
+#endif  // NAPI_VERSION >= 5
+
+#if NAPI_VERSION >= 6
 
 // BigInt
 NAPI_EXTERN napi_status napi_create_bigint_int64(napi_env env,
@@ -487,12 +509,34 @@ NAPI_EXTERN napi_status napi_get_value_bigint_words(napi_env env,
                                                     int* sign_bit,
                                                     size_t* word_count,
                                                     uint64_t* words);
-NAPI_EXTERN napi_status napi_add_finalizer(napi_env env,
-                                           napi_value js_object,
-                                           void* native_object,
-                                           napi_finalize finalize_cb,
-                                           void* finalize_hint,
-                                           napi_ref* result);
+
+// Object
+NAPI_EXTERN napi_status
+napi_get_all_property_names(napi_env env,
+                            napi_value object,
+                            napi_key_collection_mode key_mode,
+                            napi_key_filter key_filter,
+                            napi_key_conversion key_conversion,
+                            napi_value* result);
+
+// Instance data
+NAPI_EXTERN napi_status napi_set_instance_data(napi_env env,
+                                               void* data,
+                                               napi_finalize finalize_cb,
+                                               void* finalize_hint);
+
+NAPI_EXTERN napi_status napi_get_instance_data(napi_env env,
+                                               void** data);
+#endif  // NAPI_VERSION >= 6
+
+#ifdef NAPI_EXPERIMENTAL
+// ArrayBuffer detaching
+NAPI_EXTERN napi_status napi_detach_arraybuffer(napi_env env,
+                                                napi_value arraybuffer);
+
+NAPI_EXTERN napi_status napi_is_detached_arraybuffer(napi_env env,
+                                                     napi_value value,
+                                                     bool* result);
 #endif  // NAPI_EXPERIMENTAL
 
 EXTERN_C_END
