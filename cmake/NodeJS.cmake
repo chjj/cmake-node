@@ -8,12 +8,41 @@ endif()
 
 set(__NODEJS_CMAKE__ 1)
 
+# cmake-node overwrites CMAKE_TOOLCHAIN_FILE to get an early
+# include. Allow the user to pass NODE_TOOLCHAIN_FILE if they
+# want to use another toolchain file. We try to replicate the
+# behavior of CMAKE_TOOLCHAIN_FILE here.
+if(NODE_TOOLCHAIN_FILE)
+  include("${CMAKE_BINARY_DIR}/${NODE_TOOLCHAIN_FILE}" OPTIONAL
+          RESULT_VARIABLE _INCLUDED_NODE_TOOLCHAIN_FILE)
+  if(NOT _INCLUDED_NODE_TOOLCHAIN_FILE)
+     include("${NODE_TOOLCHAIN_FILE}" OPTIONAL
+             RESULT_VARIABLE _INCLUDED_NODE_TOOLCHAIN_FILE)
+  endif()
+  if(_INCLUDED_NODE_TOOLCHAIN_FILE)
+    set(NODE_TOOLCHAIN_FILE "${_INCLUDED_NODE_TOOLCHAIN_FILE}" CACHE
+        FILEPATH "The cmake-node toolchain file" FORCE)
+  else()
+    message(FATAL_ERROR "Could not find toolchain file: ${NODE_TOOLCHAIN_FILE}")
+    set(NODE_TOOLCHAIN_FILE "NOTFOUND" CACHE
+        FILEPATH "The cmake-node toolchain file" FORCE)
+  endif()
+endif()
+
+if(CMAKE_SYSTEM_NAME)
+  set(NODE_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+  set(NODE_SYSTEM_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+else()
+  set(NODE_SYSTEM_NAME "${CMAKE_HOST_SYSTEM_NAME}")
+  set(NODE_SYSTEM_PROCESSOR "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+endif()
+
 if(WIN32)
   set(NODE_BIN "node.exe" CACHE STRING "Node.js executable name")
   set(NODE_LIB "node.lib" CACHE FILEPATH "Path to node.lib")
-elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400")
+elseif(NODE_SYSTEM_NAME MATCHES "AIX|OS400")
   set(NODE_EXP "node.exp" CACHE FILEPATH "Path to node.exp")
-elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "OS390")
+elseif(NODE_SYSTEM_NAME STREQUAL "OS390")
   set(NODE_EXP "libnode.x" CACHE FILEPATH "Path to libnode.x")
 endif()
 
@@ -40,11 +69,11 @@ if(APPLE)
   list(APPEND _node_ldflags -undefined dynamic_lookup)
 endif()
 
-if(CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400")
-  if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "powerpc")
+if(NODE_SYSTEM_NAME MATCHES "AIX|OS400")
+  if(NODE_SYSTEM_PROCESSOR STREQUAL "powerpc")
     list(APPEND _node_ldflags -Wl,-bmaxdata:0x60000000/dsa)
   endif()
-  if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "powerpc64|ppc64|ppc64le")
+  if(NODE_SYSTEM_PROCESSOR MATCHES "powerpc64|ppc64|ppc64le")
     list(APPEND _node_cflags -maix64)
     list(APPEND _node_ldflags -maix64)
   endif()
@@ -52,7 +81,7 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "AIX|OS400")
   list(APPEND _node_ldflags "-Wl,-bimport:${NODE_EXP}")
 endif()
 
-if(CMAKE_HOST_SYSTEM_NAME STREQUAL "OS390")
+if(NODE_SYSTEM_NAME STREQUAL "OS390")
   list(APPEND _node_cflags -q64)
   list(APPEND _node_cflags -Wc,DLL)
   list(APPEND _node_cflags -qlonglong)
