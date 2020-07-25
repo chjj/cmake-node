@@ -73,17 +73,26 @@ function(add_node_library target)
 endfunction()
 
 function(add_node_module target)
-  set(sources ${ARGV})
-
-  list(REMOVE_AT sources 0)
-
-  add_library(${target} SHARED ${sources} ${_node_sources})
+  add_library(${target} SHARED ${ARGN} ${_node_sources})
 
   target_compile_definitions(${target} PRIVATE ${_node_defines}
                              NODE_GYP_MODULE_NAME=${target})
   target_compile_options(${target} PRIVATE ${_node_cflags})
   target_include_directories(${target} PRIVATE ${_node_includes})
-  target_link_options(${target} PRIVATE ${_node_ldflags})
+
+  if(COMMAND target_link_options)
+    target_link_options(${target} PRIVATE ${_node_ldflags})
+  else()
+    # Use a loop instead of string(REPLACE) to
+    # avoid modifying file paths with semicolons.
+    set(ldflags "")
+    foreach(flag IN LISTS _node_ldflags)
+      set(ldflags "${ldflags} ${flag}")
+    endforeach()
+    string(STRIP "${ldflags}" ldflags)
+    set_property(TARGET ${target} PROPERTY LINK_FLAGS "${ldflags}")
+  endif()
+
   target_link_libraries(${target} PRIVATE ${_node_libs})
 
   set_property(TARGET ${target} PROPERTY PREFIX "")
