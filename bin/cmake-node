@@ -98,7 +98,7 @@ async function install(options, args) {
 }
 
 async function configure(options, args) {
-  const build = path.join(options.root, 'build');
+  const build = getBuildDirectory(options);
 
   mkdirp(build, 0o755);
 
@@ -109,8 +109,7 @@ async function configure(options, args) {
 
     exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
                          '-D', `NODE_LIB=${NODE_LIB}`,
-                         ...args,
-                         '..'], build);
+                         ...args, '..'], build);
   } else {
     const argv = [
       '-G', 'Unix Makefiles',
@@ -124,14 +123,14 @@ async function configure(options, args) {
     }
 
     argv.push(...args);
-    argv.push('..');
+    argv.push('../..');
 
     exec(options.cmake, argv, build);
   }
 }
 
 async function build(options, args) {
-  const build = path.join(options.root, 'build');
+  const build = getBuildDirectory(options);
 
   mkdirp(build, 0o755);
 
@@ -157,7 +156,7 @@ async function clean(options, args) {
 }
 
 async function reconfigure(options, args) {
-  const build = path.join(options.root, 'build');
+  const build = getBuildDirectory(options);
   const cache = path.join(build, 'CMakeCache.txt');
 
   remove(cache);
@@ -172,19 +171,16 @@ async function rebuild(options, args) {
 }
 
 async function ui(options, args) {
+  const build = getBuildDirectory(options);
+
+  mkdirp(build, 0o755);
+
   let name = WINDOWS ? 'cmake-gui.exe' : 'ccmake';
 
   if (isPath(options.cmake))
     name = path.resolve(options.cmake, '..', name);
 
-  if (WINDOWS) {
-    cp.spawnSync(name, [...args, 'build'], {
-      cwd: path.resolve(options.root),
-      stdio: 'inherit'
-    });
-  } else {
-    exec(name, [...args, 'build'], options.root);
-  }
+  exec(name, [...args, '.'], build, false);
 }
 
 /*
@@ -511,6 +507,13 @@ function getArgs(argv) {
   return args;
 }
 
+function getBuildDirectory(options) {
+  if (WINDOWS)
+    return path.join(options.root, 'build');
+
+  return path.join(options.root, 'build', options.config);
+}
+
 function prependModulePath(args) {
   const out = ['-D', ''];
 
@@ -556,11 +559,11 @@ function isGYPRoot(root) {
   return fs.existsSync(path.join(root, 'binding.gyp'));
 }
 
-function exec(file, args, cwd = '.') {
+function exec(file, args, cwd = '.', windowsHide = true) {
   const result = cp.spawnSync(file, args, {
     cwd: path.resolve(cwd),
     stdio: 'inherit',
-    windowsHide: true
+    windowsHide
   });
 
   if (result.error)
