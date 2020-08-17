@@ -21,7 +21,7 @@ const path = require('path');
 
 const VERSION = '0.1.1';
 const NAPI_VERSION = 6;
-const NODE_BIN = path.basename(process.execPath);
+const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WINDOWS = process.platform === 'win32';
@@ -62,13 +62,14 @@ const HELP = `
 
     -v, --version        output the version number
     -c, --config <type>  build type (default: Release)
-    -C, --cmake <path>   path to cmake binary (default: cmake/cmake.exe)
+    -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of the include directory
     -f, --fallback       fall back to node-gyp if cmake is not found
-    -g, --gyp <path>     path to node-gyp binary (default: node-gyp)
+    -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
+    --node-bin <name>    name of node binary (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -h, --help           output usage information
@@ -105,6 +106,7 @@ async function configure(options, args) {
   args = prependModulePath(args);
 
   if (WINDOWS) {
+    const NODE_BIN = options.bin || NODE_BINARY;
     const NODE_LIB = options.lib || (await getNodeLib(options.dist));
 
     exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
@@ -196,6 +198,7 @@ function parseArgs(argv) {
     fallback: false,
     production: false,
     gyp: null,
+    bin: null,
     lib: null,
     exp: null,
     cmd: null,
@@ -303,6 +306,17 @@ function parseArgs(argv) {
       case '-p':
       case '--production': {
         options.production = true;
+        break;
+      }
+
+      case '--node-bin': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.bin = next;
+
+        i += 1;
+
         break;
       }
 

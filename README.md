@@ -99,13 +99,14 @@ accomplishes this by checking for usual global install locations for node-gyp
 
     -v, --version        output the version number
     -c, --config <type>  build type (default: Release)
-    -C, --cmake <path>   path to cmake binary (default: cmake/cmake.exe)
+    -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -l, --location       print location of the include directory
     -f, --fallback       fall back to node-gyp if cmake is not found
-    -g, --gyp <path>     path to node-gyp binary (default: node-gyp)
+    -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
+    --node-bin <name>    name of node binary (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -h, --help           output usage information
