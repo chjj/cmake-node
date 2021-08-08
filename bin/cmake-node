@@ -144,8 +144,6 @@ async function configure(options, args) {
     }
 
     if (options.wasm) {
-      // https://github.com/nodejs/abi-stable-node/issues/375
-      // https://gist.github.com/devsnek/db5499bf774f078e9ebb679680bd2cd1
       const WASI_PATH = path.join(options.wasi, 'share',
                                                 'cmake',
                                                 'wasi-sdk.cmake');

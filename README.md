@@ -1,13 +1,23 @@
 # cmake-node
 
-Node.js toolchain for CMake.
+Node.js build system on top of CMake.
+
+## Features
+
+- No node.js dependencies
+- Bundled NAPI headers (no downloading headers)
+- MinGW support for cross-compiling to Windows
+- WASM support (see below for an explanation)
+
+## Todo
+
+- [osxcross] support for cross-compiling to Darwin
 
 ## Design
 
-cmake-node provides a node.js toolchain file and an accompanying wrapper for
-CMake. In contrast to node-gyp and other projects, it avoids modification of
-the global state, and instead exposes just two functions: `add_node_library`
-and `add_node_module`.
+cmake-node provides an include file and an accompanying wrapper for CMake. In
+contrast to other projects, it avoids modification of the global state, and
+instead exposes just two functions: `add_node_library` and `add_node_module`.
 
 cmake-node is very lightweight and requires no dependencies. This provides a
 nice alternative to other node build systems, which pull in half of npm just to
@@ -19,21 +29,18 @@ headers, it should not be that severe of a issue as NAPI provides a stable ABI.
 Support for other node headers (v8, node, openssl, nan, etc) is intentionally
 excluded for this reason.
 
-Auto-downloading is only necessary for the windows `node.lib` file. Builds on
-unix will never do any network IO.
-
 While cmake-node requires no _node.js_ dependencies, it does require that the
-user have certain other dependencies: this includes CMake itself, MSVS on
-windows, and Make on unix.
+user have certain other dependencies: this includes CMake itself, Visual Studio
+on Windows, Xcode on OSX, and Make on unix.
 
 ## Example
 
 CMakeLists.txt:
 
 ``` cmake
-include(NodeJS)
-
 project(my_project LANGUAGES C)
+
+include(NodeJS)
 
 add_node_library(my_library STATIC src/my_lib.c)
 
@@ -44,7 +51,7 @@ target_link_libraries(my_project PRIVATE my_library)
 
 To build:
 
-``` bash
+``` sh
 $ cmake-node rebuild
 ```
 
@@ -69,7 +76,7 @@ cmake-node commands accept a `--production` flag which will clean the workspace
 for release. This removes all files generated during the build aside from your
 resulting `.node` file.
 
-``` bash
+``` sh
 $ cmake-node rebuild --production
 ```
 
@@ -81,7 +88,7 @@ node-gyp is _the_ build system for node.js. To cope with this unfortunate
 reality, and to ease transition away from node-gyp, cmake-node offers a
 fallback option for users who are willing to also provide a binding.gyp file.
 
-``` bash
+``` sh
 $ cmake-node rebuild --fallback
 ```
 
@@ -89,6 +96,35 @@ The above command will fall back to node-gyp if CMake is not installed on the
 system (with limited support for cmake-node command line flags). cmake-node
 accomplishes this by checking for usual global install locations for node-gyp
 (this includes checking for npm's bundled node-gyp).
+
+## MinGW Support
+
+cmake-node allows native modules to be cross-compiled for win32 using the mingw
+toolchain.
+
+``` sh
+$ cmake-node rebuild --mingw --arch=x64
+```
+
+The prefixed mingw toolchain must be in your `PATH`.
+
+## WASM Support
+
+A while ago, some node.js contributors had the brilliant idea of [exposing NAPI
+to WASM][wasm-napi]. In theory, this means you can cross-compile your NAPI
+module to WASM and have it work transparently. Combined with WASI, this means
+only minimal (or no) changes need to be made to your code. cmake-node has
+experimental support for this.
+
+``` sh
+$ cmake-node rebuild --wasm --wasi-sdk=/path/to/wasi-sdk
+```
+
+This feature requires wasi-sdk 12 or above as it requires reactor support (i.e.
+`-mexec-model=reactor`).
+
+You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
+@devsnek).
 
 ## Usage
 
@@ -109,6 +145,10 @@ accomplishes this by checking for usual global install locations for node-gyp
     --node-bin <name>    name of node binary (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
+    -M, --mingw          cross-compile for win32 using mingw
+    -W, --wasm           cross-compile for wasm using wasi-sdk
+    --wasi-sdk <path>    path to wasi-sdk
+    -A, --arch <arch>    select mingw arch (x86 or x64)
     -h, --help           output usage information
 
   Commands:
@@ -133,3 +173,7 @@ all code is your original work. `</legalese>`
 - Copyright (c) 2020, Christopher Jeffrey (MIT License).
 
 See LICENSE for more info.
+
+[wasm-napi]: https://github.com/nodejs/abi-stable-node/issues/375
+[napi-module]: https://gist.github.com/devsnek/db5499bf774f078e9ebb679680bd2cd1
+[osxcross]: https://github.com/tpoechtrager/osxcross

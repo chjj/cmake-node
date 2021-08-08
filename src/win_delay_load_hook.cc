@@ -19,7 +19,7 @@
  *   file it'll just return a handle to the process image.
  *
  *   This allows compiled addons to work when the host executable
- *   is renamed. Note that this file was modified to compile as C.
+ *   is renamed.
  */
 
 #ifdef _MSC_VER
