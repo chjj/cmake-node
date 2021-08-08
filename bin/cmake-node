@@ -412,7 +412,7 @@ function parseArgs(argv) {
           throw new Error('MinGW not supported on windows.');
 
         if (next !== 'i686' && next !== 'x86_64')
-          throw new Error(`Architecture must be i686 or x86_64.`);
+          throw new Error('Architecture must be i686 or x86_64.');
 
         options.arch = next;
 
