@@ -20,7 +20,7 @@ const path = require('path');
  */
 
 const VERSION = '0.1.1';
-const NAPI_VERSION = 6;
+const NAPI_VERSION = 8;
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
