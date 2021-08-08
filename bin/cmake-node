@@ -24,7 +24,7 @@ const NAPI_VERSION = 8;
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
-const IMPLIB_PATH = path.resolve(__dirname, '..', 'implib');
+const DEF_PATH = path.resolve(__dirname, '..', 'etc', 'node.def');
 const WASI_RUN_PATH = path.join(__dirname, 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WINDOWS = process.platform === 'win32';
@@ -75,6 +75,7 @@ const HELP = `
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
+    --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -M, --mingw          cross-compile for win32 using mingw
@@ -103,8 +104,11 @@ const HELP = `
  */
 
 async function install(options, args) {
-  if (WINDOWS)
-    await getNodeLib(options.dist);
+  if (WINDOWS) {
+    await getWin32Lib(options);
+  } else {
+    getMingwLib(options);
+  }
 }
 
 async function configure(options, args) {
@@ -115,10 +119,9 @@ async function configure(options, args) {
   args = prependModulePath(args);
 
   if (WINDOWS) {
-    const NODE_BIN = options.bin || NODE_BINARY;
-    const NODE_LIB = options.lib || (await getNodeLib(options.dist));
+    const NODE_LIB = options.lib || (await getWin32Lib(options));
 
-    exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
+    exec(options.cmake, ['-D', `NODE_BIN=${options.bin}`,
                          '-D', `NODE_LIB=${NODE_LIB}`,
                          ...args, '..'], build);
   } else {
@@ -135,11 +138,11 @@ async function configure(options, args) {
 
     if (options.mingw) {
       const MINGW_ARCH = options.arch === 'x64' ? 'x86_64' : 'i686';
-      const NODE_LIB = options.lib || path.join(IMPLIB_PATH,
-                                                `node-${options.arch}.lib`);
+      const NODE_LIB = options.lib || getMingwLib(options);
 
       argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_PATH}`);
       argv.push('-D', `MINGW_ARCH=${MINGW_ARCH}`);
+      argv.push('-D', `NODE_BIN=${options.bin}`);
       argv.push('-D', `NODE_LIB=${NODE_LIB}`);
     }
 
@@ -229,7 +232,8 @@ function parseArgs(argv) {
     fallback: false,
     production: false,
     gyp: null,
-    bin: null,
+    bin: NODE_BINARY,
+    def: DEF_PATH,
     lib: null,
     exp: null,
     mingw: false,
@@ -355,6 +359,17 @@ function parseArgs(argv) {
         break;
       }
 
+      case '--node-def': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.def = path.resolve(next);
+
+        i += 1;
+
+        break;
+      }
+
       case '--node-lib': {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
@@ -383,6 +398,9 @@ function parseArgs(argv) {
           throw new Error('MinGW not supported on windows.');
 
         options.mingw = true;
+
+        if (options.bin === NODE_BINARY)
+          options.bin = 'node.exe';
 
         break;
       }
@@ -508,7 +526,7 @@ async function main(argv) {
  * Installation Files
  */
 
-async function getNodeLib(dist) {
+async function getWin32Lib(options) {
   // Explanation: It's impossible to build a DLL
   // with unresolved symbols. As a result, when
   // node.js is built, a .lib file is created,
@@ -522,18 +540,74 @@ async function getNodeLib(dist) {
   // Further reading: http://edll.sourceforge.net/
   //
   // Node.js uses the ".def & .a" solution.
+  const base = options.bin.split('.')[0];
+  const name = `${base}-${process.arch}-${NAPI_VERSION}.lib`;
+  const file = path.join(getCacheDir(), name);
+  const machine = process.arch.toUpperCase();
+
+  if (fs.existsSync(file))
+    return file;
+
+  mkdirp(path.dirname(file), 0o755);
+
+  console.log('Looking for lib.exe...');
+
+  const lib = findLib(options.cmake) || 'lib.exe';
+
+  if (lib === 'lib.exe')
+    console.error('WARNING: Could not find lib.exe.');
+  else
+    console.log(`Found lib.exe: ${lib}`);
+
+  console.log(`Building ${file}...`);
+
+  const result = tryExec(lib, [`/OUT:${file}`,
+                               `/DEF:${options.def}`,
+                               `/NAME:${options.bin}`,
+                               `/MACHINE:${machine}`]);
+
+  if (!result) {
+    if (base !== 'node' && base !== 'nodejs')
+      throw new Error(`Could not build ${name}.`);
+
+    console.error(`WARNING: Could not build ${name}.`);
+
+    return getNodeLib(options.dist);
+  }
+
+  return file;
+}
+
+function getMingwLib(options) {
+  const base = options.bin.split('.')[0];
+  const name = `${base}-${options.arch}-${NAPI_VERSION}.lib`;
+  const file = path.join(getCacheDir(), name);
+  const prefix = options.arch === 'x64' ? 'x86_64' : 'i686';
+  const dlltool = `${prefix}-w64-mingw32-dlltool`;
+  const machine = 'i386:x86-64';
+
+  if (fs.existsSync(file))
+    return file;
+
+  mkdirp(path.dirname(file), 0o755);
+
+  const result = tryExec(dlltool, ['-y', file,
+                                   '-d', options.def,
+                                   '-D', options.bin,
+                                   '-m', machine]);
+
+  if (!result)
+    throw new Error(`Could not build ${name}.`);
+
+  return file;
+}
+
+async function getNodeLib(dist) {
   const arch = process.arch;
   const version = process.version.split('-')[0].substring(1);
   const url = `${dist}/v${version}/win-${arch}/node.lib`;
-  const name = `node-${version}-${arch}.lib`;
-
-  // See: https://github.com/sindresorhus/env-paths
-  let {LOCALAPPDATA} = process.env;
-
-  if (!LOCALAPPDATA)
-    LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
-
-  const file = path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache', name);
+  const name = `node-${arch}-${version}.lib`;
+  const file = path.join(getCacheDir(), name);
 
   if (!fs.existsSync(file))
     await download(url, file);
@@ -608,6 +682,20 @@ function getArgs(argv) {
   return args;
 }
 
+function getCacheDir() {
+  if (WINDOWS) {
+    // See: https://github.com/sindresorhus/env-paths
+    let {LOCALAPPDATA} = process.env;
+
+    if (!LOCALAPPDATA)
+      LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
+
+    return path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache');
+  }
+
+  return path.resolve(os.homedir(), '.cache', 'cmake-node');
+}
+
 function getBuildDirectory(options) {
   if (WINDOWS)
     return path.join(options.root, 'build');
@@ -679,11 +767,11 @@ function exec(file, args, cwd = '.', windowsHide = true) {
     process.exit(result.status);
 }
 
-function hasExecutable(file) {
+function tryExec(file, args) {
   let result;
 
   try {
-    result = cp.spawnSync(file, ['--version'], {
+    result = cp.spawnSync(file, args, {
       stdio: 'ignore',
       windowsHide: true
     });
@@ -692,6 +780,10 @@ function hasExecutable(file) {
   }
 
   return !result.error && !result.signal && result.status === 0;
+}
+
+function hasExecutable(file) {
+  return tryExec(file, ['--version']);
 }
 
 function shouldFallback(options) {
@@ -819,6 +911,35 @@ function runGYP(gyp, cmd, root) {
 
     exec(gyp, [cmd], root);
   }
+}
+
+function findLib(cmake) {
+  // Abuse CMake to find out where MSVC is.
+  const file = path.join(getCacheDir(), 'sysinfo.log');
+
+  if (!fs.existsSync(file)) {
+    const result = tryExec(cmake, ['--system-information', file]);
+
+    if (!result)
+      return null;
+
+    if (!fs.existsSync(file))
+      return null;
+  }
+
+  const txt = fs.readFileSync(file, 'utf8');
+  const m = /CMAKE_(?:C|CXX)_COMPILER == "([^"\n]+)"/.exec(txt);
+
+  if (!m)
+    return null;
+
+  const bin = path.dirname(path.normalize(m[1]));
+  const lib = path.join(bin, 'lib.exe');
+
+  if (!fs.existsSync(lib))
+    return null;
+
+  return lib;
 }
 
 function isPath(str) {
@@ -1000,7 +1121,7 @@ function _download(url, file, resolve, reject) {
     agent: false
   };
 
-  process.stdout.write(`Downloading ${url}...\n`);
+  console.log(`Downloading ${url}...`);
 
   mkdirp(path.dirname(file), 0o755);
 
