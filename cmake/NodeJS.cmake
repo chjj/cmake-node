@@ -84,8 +84,6 @@ if(WASI)
   list(APPEND _node_ldflags -mexec-model=reactor)
   list(APPEND _node_ldflags -Wl,--allow-undefined)
   list(APPEND _node_ldflags -Wl,--export-dynamic)
-  list(APPEND _node_ldflags -Wl,--export=malloc)
-  list(APPEND _node_ldflags -Wl,--export=free)
 endif()
 
 function(add_node_library target)
