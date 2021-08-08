@@ -77,6 +77,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "OS390")
   list(APPEND _node_libs ${NODE_EXP})
 endif()
 
+if(WASI)
+  list(APPEND _node_ldflags -mexec-model=reactor)
+  list(APPEND _node_ldflags -Wl,--allow-undefined)
+  list(APPEND _node_ldflags -Wl,--export-dynamic)
+  list(APPEND _node_ldflags -Wl,--export=malloc)
+  list(APPEND _node_ldflags -Wl,--export=free)
+endif()
+
 function(add_node_library target)
   add_library(${ARGV})
 
@@ -108,7 +116,11 @@ function(add_node_library target)
 endfunction()
 
 function(add_node_module target)
-  add_library(${target} SHARED ${ARGN} ${_node_sources})
+  if(WASI)
+    add_executable(${target} ${ARGN} ${_node_sources})
+  else()
+    add_library(${target} SHARED ${ARGN} ${_node_sources})
+  endif()
 
   target_compile_definitions(${target} PRIVATE ${_node_defines}
                              NODE_GYP_MODULE_NAME=${target})
@@ -150,5 +162,11 @@ function(add_node_module target)
   if(MINGW)
     set_target_properties(${target} PROPERTIES IMPORT_PREFIX ""
                                                IMPORT_SUFFIX ".lib")
+  endif()
+
+  if(WASI)
+    set_target_properties(${target} PROPERTIES SUFFIX ".wasm"
+                                               C_VISIBILITY_PRESET default
+                                               CXX_VISIBILITY_PRESET default)
   endif()
 endfunction()

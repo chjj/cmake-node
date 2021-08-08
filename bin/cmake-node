@@ -24,6 +24,7 @@ const NAPI_VERSION = 8;
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
+const WASI_RUN_PATH = path.join(__dirname, 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WINDOWS = process.platform === 'win32';
 
@@ -37,6 +38,7 @@ const IGNORE_EXTS = [
   '.node',
   '.pdb',
   '.so',
+  '.wasm',
   '.x'
 ];
 
@@ -76,6 +78,8 @@ const HELP = `
     --node-lib <path>             path to node.lib (windows only)
     --node-exp <path>             path to node.exp/libnode.x (aix/zos only)
     -M, --mingw                   cross-compile for win32 using mingw
+    -W, --wasm                    cross-compile for wasm using wasi-sdk
+    --wasi-sdk <path>             path to wasi-sdk
     -A, --arch <arch>             select mingw arch (i686 or x86_64)
     -h, --help                    output usage information
 
@@ -139,9 +143,23 @@ async function configure(options, args) {
                                                          options.version,
                                                          options.arch));
 
-      argv.push('-D', `NODE_LIB=${NODE_LIB}`);
-      argv.push('-D', `MINGW_ARCH=${options.arch}`);
       argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_PATH}`);
+      argv.push('-D', `MINGW_ARCH=${options.arch}`);
+      argv.push('-D', `NODE_LIB=${NODE_LIB}`);
+    }
+
+    if (options.wasm) {
+      // https://github.com/nodejs/abi-stable-node/issues/375
+      // https://gist.github.com/devsnek/db5499bf774f078e9ebb679680bd2cd1
+      const WASI_PATH = path.join(options.wasi, 'share',
+                                                'cmake',
+                                                'wasi-sdk.cmake');
+
+      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${WASI_PATH}`);
+      argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${WASI_RUN_PATH}`);
+      argv.push('-D', `WASI_SDK_PREFIX=${options.wasi}`);
+
+      process.env.NODEJS = process.execPath;
     }
 
     argv.push(...args);
@@ -223,6 +241,8 @@ function parseArgs(argv) {
     lib: null,
     exp: null,
     mingw: false,
+    wasm: false,
+    wasi: process.env.WASI || '/opt/wasi-sdk',
     arch: 'x86_64',
     cmd: null,
     args: []
@@ -399,6 +419,30 @@ function parseArgs(argv) {
           throw new Error('MinGW not supported on windows.');
 
         options.mingw = true;
+
+        break;
+      }
+
+      case '-W':
+      case '--wasm': {
+        if (WINDOWS)
+          throw new Error('WASM not supported on windows.');
+
+        options.wasm = true;
+
+        break;
+      }
+
+      case '--wasi-sdk': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        if (WINDOWS)
+          throw new Error('WASM not supported on windows.');
+
+        options.wasi = path.resolve(next);
+
+        i += 1;
 
         break;
       }
