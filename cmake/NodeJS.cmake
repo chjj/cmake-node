@@ -93,26 +93,6 @@ function(add_node_library target)
   target_include_directories(${target} PRIVATE ${_node_includes})
 
   set_property(TARGET ${target} PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-  if(MINGW)
-    get_property(_type TARGET ${target} PROPERTY TYPE)
-
-    if(_type MATCHES "^SHARED_LIBRARY$|^MODULE_LIBRARY$")
-      if(COMMAND target_link_options)
-        target_link_options(${target} PRIVATE -static-libgcc)
-      else()
-        set_property(TARGET ${target} PROPERTY LINK_FLAGS "-static-libgcc")
-      endif()
-
-      set_target_properties(${target} PROPERTIES PREFIX ""
-                                                 SUFFIX ".dll"
-                                                 IMPORT_PREFIX ""
-                                                 IMPORT_SUFFIX ".lib")
-    elseif(_type STREQUAL "STATIC_LIBRARY")
-      set_target_properties(${target} PROPERTIES PREFIX ""
-                                                 SUFFIX ".lib")
-    endif()
-  endif()
 endfunction()
 
 function(add_node_module target)
@@ -160,6 +140,10 @@ function(add_node_module target)
                                              CXX_VISIBILITY_PRESET hidden)
 
   if(MINGW)
+    # An import library isn't actually necessary since
+    # this module will be dynamically loaded and stubs
+    # aren't needed, but we make the suffix compatible
+    # with windows anyway.
     set_target_properties(${target} PROPERTIES IMPORT_PREFIX ""
                                                IMPORT_SUFFIX ".lib")
   endif()
