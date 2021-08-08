@@ -620,6 +620,8 @@ function getBuildDirectory(options) {
 }
 
 function prependModulePath(args) {
+  // See: https://github.com/chjj/cmake-node/issues/1
+  const mpath = WINDOWS ? MODULE_PATH.replace(/\\/g, '/') : MODULE_PATH;
   const out = ['-D', ''];
 
   let paths = null;
@@ -647,9 +649,9 @@ function prependModulePath(args) {
   }
 
   if (paths)
-    paths = `${MODULE_PATH};${paths}`;
+    paths = `${mpath};${paths}`;
   else
-    paths = MODULE_PATH;
+    paths = mpath;
 
   out[1] = `CMAKE_MODULE_PATH=${paths}`;
 
