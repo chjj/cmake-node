@@ -24,6 +24,7 @@ const NAPI_VERSION = 8;
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
+const IMPLIB_PATH = path.resolve(__dirname, '..', 'implib');
 const WASI_RUN_PATH = path.join(__dirname, 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WINDOWS = process.platform === 'win32';
@@ -64,34 +65,33 @@ const HELP = `
 
   Options:
 
-    -v, --version                 output the version number
-    -c, --config <type>           build type (default: Release)
-    -C, --cmake <path>            path to cmake binary (default: cmake)
-    -d, --dist-url <url>          node.js dist url (windows only)
-    -V, --dist-version <version>  node.js dist version (mingw only)
-    -r, --root <path>             path to root directory (default: .)
-    -l, --location                print location of the include directory
-    -f, --fallback                fall back to node-gyp if cmake is not found
-    -g, --gyp <path>              path to node-gyp binary (default: node-gyp)
-    -p, --production              clean all files except for .node files
-    --node-bin <name>             name of node binary (windows only)
-    --node-lib <path>             path to node.lib (windows only)
-    --node-exp <path>             path to node.exp/libnode.x (aix/zos only)
-    -M, --mingw                   cross-compile for win32 using mingw
-    -W, --wasm                    cross-compile for wasm using wasi-sdk
-    --wasi-sdk <path>             path to wasi-sdk
-    -A, --arch <arch>             select mingw arch (i686 or x86_64)
-    -h, --help                    output usage information
+    -v, --version        output the version number
+    -c, --config <type>  build type (default: Release)
+    -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
+    -d, --dist <url>     node.js dist url (windows only)
+    -r, --root <path>    path to root directory (default: .)
+    -l, --location       print location of the include directory
+    -f, --fallback       fall back to node-gyp if cmake is not found
+    -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
+    -p, --production     clean all files except for .node files
+    --node-bin <name>    name of node binary (windows only)
+    --node-lib <path>    path to node.lib (windows only)
+    --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
+    -M, --mingw          cross-compile for win32 using mingw
+    -W, --wasm           cross-compile for wasm using wasi-sdk
+    --wasi-sdk <path>    path to wasi-sdk
+    -A, --arch <arch>    select mingw arch (x86 or x64)
+    -h, --help           output usage information
 
   Commands:
 
-    install                       install necessary files (windows only)
-    configure                     configure package
-    build                         build package
-    clean                         clean root directory
-    reconfigure                   reconfigure package
-    rebuild                       rebuild package
-    ui                            open ui for package (ccmake/cmake-gui)
+    install              install necessary files (windows only)
+    configure            configure package
+    build                build package
+    clean                clean root directory
+    reconfigure          reconfigure package
+    rebuild              rebuild package
+    ui                   open ui for package (ccmake/cmake-gui)
 
   node@${process.versions.node} - ${process.execPath}
   napi@${NAPI_VERSION} - ${path.resolve(__dirname, '..', 'include', 'node')}
@@ -103,13 +103,8 @@ const HELP = `
  */
 
 async function install(options, args) {
-  if (WINDOWS) {
-    await getWin32Lib(options.dist);
-  } else if (options.mingw) {
-    await getMingwLib(options.dist,
-                      options.version,
-                      options.arch);
-  }
+  if (WINDOWS)
+    await getNodeLib(options.dist);
 }
 
 async function configure(options, args) {
@@ -121,7 +116,7 @@ async function configure(options, args) {
 
   if (WINDOWS) {
     const NODE_BIN = options.bin || NODE_BINARY;
-    const NODE_LIB = options.lib || (await getWin32Lib(options.dist));
+    const NODE_LIB = options.lib || (await getNodeLib(options.dist));
 
     exec(options.cmake, ['-D', `NODE_BIN=${NODE_BIN}`,
                          '-D', `NODE_LIB=${NODE_LIB}`,
@@ -139,12 +134,12 @@ async function configure(options, args) {
     }
 
     if (options.mingw) {
-      const NODE_LIB = options.lib || (await getMingwLib(options.dist,
-                                                         options.version,
-                                                         options.arch));
+      const MINGW_ARCH = options.arch === 'x64' ? 'x86_64' : 'i686';
+      const NODE_LIB = options.lib || path.join(IMPLIB_PATH,
+                                                `node-${options.arch}.lib`);
 
       argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_PATH}`);
-      argv.push('-D', `MINGW_ARCH=${options.arch}`);
+      argv.push('-D', `MINGW_ARCH=${MINGW_ARCH}`);
       argv.push('-D', `NODE_LIB=${NODE_LIB}`);
     }
 
@@ -232,7 +227,6 @@ function parseArgs(argv) {
     config: 'Release',
     cmake: findCMake(),
     dist: 'https://nodejs.org/dist',
-    version: '10.0.0',
     root: '.',
     fallback: false,
     production: false,
@@ -243,7 +237,7 @@ function parseArgs(argv) {
     mingw: false,
     wasm: false,
     wasi: process.env.WASI || '/opt/wasi-sdk',
-    arch: 'x86_64',
+    arch: 'x64',
     cmd: null,
     args: []
   };
@@ -298,39 +292,11 @@ function parseArgs(argv) {
       }
 
       case '-d':
-      case '--dist-url': {
+      case '--dist': {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
 
         options.dist = next;
-
-        i += 1;
-
-        break;
-      }
-
-      case '-V':
-      case '--dist-version': {
-        if (!next || next[0] === '-')
-          throw new Error(`Invalid option for: ${arg}.`);
-
-        if (WINDOWS)
-          throw new Error('MinGW not supported on windows.');
-
-        const parts = next.split('.');
-
-        if (parts.length === 0 || parts.length > 3)
-          throw new Error(`Invalid version: '${next}'.`);
-
-        for (const part of parts) {
-          if (!/^\d{1,3}$/.test(part))
-            throw new Error(`Invalid version: '${next}'.`);
-        }
-
-        while (parts.length < 3)
-          parts.push('0');
-
-        options.version = parts.join('.');
 
         i += 1;
 
@@ -455,8 +421,8 @@ function parseArgs(argv) {
         if (WINDOWS)
           throw new Error('MinGW not supported on windows.');
 
-        if (next !== 'i686' && next !== 'x86_64')
-          throw new Error('Architecture must be i686 or x86_64.');
+        if (next !== 'x86' && next !== 'x64')
+          throw new Error('Architecture must be x86 or x64.');
 
         options.arch = next;
 
@@ -544,7 +510,7 @@ async function main(argv) {
  * Installation Files
  */
 
-async function getWin32Lib(dist) {
+async function getNodeLib(dist) {
   // Explanation: It's impossible to build a DLL
   // with unresolved symbols. As a result, when
   // node.js is built, a .lib file is created,
@@ -570,18 +536,6 @@ async function getWin32Lib(dist) {
     LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
 
   const file = path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache', name);
-
-  if (!fs.existsSync(file))
-    await download(url, file);
-
-  return file;
-}
-
-async function getMingwLib(dist, version, march) {
-  const arch = march === 'x86_64' ? 'x64' : 'x86';
-  const url = `${dist}/v${version}/win-${arch}/node.lib`;
-  const name = `node-${version}-${arch}.lib`;
-  const file = path.resolve(os.homedir(), '.cache', 'cmake-node', name);
 
   if (!fs.existsSync(file))
     await download(url, file);

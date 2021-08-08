@@ -23,8 +23,8 @@
  */
 
 #ifdef _MSC_VER
-
-#pragma managed(push, off)
+#  pragma managed(push, off)
+#endif
 
 #ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN
@@ -34,8 +34,10 @@
 #include <delayimp.h>
 #include <string.h>
 
-#pragma comment(lib, "kernel32.lib")
-#pragma comment(lib, "delayimp.lib")
+#ifdef _MSC_VER
+#  pragma comment(lib, "kernel32.lib")
+#  pragma comment(lib, "delayimp.lib")
+#endif
 
 static FARPROC WINAPI
 load_exe_hook(unsigned int event, DelayLoadInfo *info) {
@@ -54,6 +56,6 @@ load_exe_hook(unsigned int event, DelayLoadInfo *info) {
 
 decltype(__pfnDliNotifyHook2) __pfnDliNotifyHook2 = load_exe_hook;
 
-#pragma managed(pop)
-
+#ifdef _MSC_VER
+#  pragma managed(pop)
 #endif

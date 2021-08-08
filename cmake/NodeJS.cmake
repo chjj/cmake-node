@@ -35,19 +35,22 @@ list(APPEND _node_defines BUILDING_WITH_CMAKE_NODE)
 list(APPEND _node_includes "${_node_dir}/../include/node")
 
 if(WIN32)
-  if(MINGW)
-    # Ensure we are redistributable on windows.
-    list(APPEND _node_ldflags -static-libgcc)
+  list(APPEND _node_defines NODE_HOST_BINARY="${NODE_BIN}")
+
+  if(CMAKE_CXX_COMPILER_LOADED AND NOT CMAKE_C_COMPILER_LOADED)
+    list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.cc")
   else()
-    if(CMAKE_CXX_COMPILER_LOADED AND NOT CMAKE_C_COMPILER_LOADED)
-      list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.cc")
-    else()
-      list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.c")
-    endif()
-    list(APPEND _node_defines NODE_HOST_BINARY="${NODE_BIN}")
+    list(APPEND _node_sources "${_node_dir}/../src/win_delay_load_hook.c")
+  endif()
+
+  if(MINGW)
+    list(APPEND _node_ldflags -static-libgcc)
+    list(APPEND _node_libs delayimp)
+  else()
     list(APPEND _node_ldflags /delayload:${NODE_BIN})
     list(APPEND _node_ldflags /ignore:4199)
   endif()
+
   list(APPEND _node_libs ${NODE_LIB})
 endif()
 
