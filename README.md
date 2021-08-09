@@ -5,7 +5,7 @@ Node.js build system on top of CMake.
 ## Features
 
 - No node.js dependencies
-- Bundled NAPI headers (no downloading headers)
+- No network IO (no downloading headers or import libraries)
 - MinGW support for cross-compiling to Windows
 - WASM support (see below for an explanation)
 
@@ -143,6 +143,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
+    --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -M, --mingw          cross-compile for win32 using mingw
@@ -153,7 +154,8 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
 
   Commands:
 
-    install              install necessary files (windows only)
+    install              install necessary files
+    clear                clear cache
     configure            configure package
     build                build package
     clean                clean root directory

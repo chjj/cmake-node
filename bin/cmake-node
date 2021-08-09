@@ -25,7 +25,7 @@ const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
 const DEF_PATH = path.resolve(__dirname, '..', 'etc', 'node.def');
-const WASI_RUN_PATH = path.join(__dirname, 'scripts', 'wasi-run');
+const WASI_RUN_PATH = path.join(__dirname, '..', 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WINDOWS = process.platform === 'win32';
 
@@ -86,7 +86,8 @@ const HELP = `
 
   Commands:
 
-    install              install necessary files (windows only)
+    install              install necessary files
+    clear                clear cache
     configure            configure package
     build                build package
     clean                clean root directory
@@ -104,11 +105,14 @@ const HELP = `
  */
 
 async function install(options, args) {
-  if (WINDOWS) {
+  if (WINDOWS)
     await getWin32Lib(options);
-  } else {
+  else if (options.platform === 'mingw')
     getMingwLib(options);
-  }
+}
+
+async function clear(options, args) {
+  remove(getCacheDirectory());
 }
 
 async function configure(options, args) {
@@ -136,7 +140,7 @@ async function configure(options, args) {
       argv.push('-D', `NODE_EXP=${NODE_EXP}`);
     }
 
-    if (options.mingw) {
+    if (options.platform === 'mingw') {
       const MINGW_ARCH = options.arch === 'x64' ? 'x86_64' : 'i686';
       const NODE_LIB = options.lib || getMingwLib(options);
 
@@ -146,7 +150,7 @@ async function configure(options, args) {
       argv.push('-D', `NODE_LIB=${NODE_LIB}`);
     }
 
-    if (options.wasm) {
+    if (options.platform === 'wasm') {
       const WASI_PATH = path.join(options.wasi, 'share',
                                                 'cmake',
                                                 'wasi-sdk.cmake');
@@ -236,9 +240,8 @@ function parseArgs(argv) {
     def: DEF_PATH,
     lib: null,
     exp: null,
-    mingw: false,
-    wasm: false,
-    wasi: process.env.WASI || '/opt/wasi-sdk',
+    platform: '',
+    wasi: '/opt/wasi-sdk',
     arch: 'x64',
     cmd: null,
     args: []
@@ -365,6 +368,9 @@ function parseArgs(argv) {
 
         options.def = path.resolve(next);
 
+        if (!fs.existsSync(options.def))
+          throw new Error(`Invalid node.def path: '${next}'.`);
+
         i += 1;
 
         break;
@@ -375,6 +381,9 @@ function parseArgs(argv) {
           throw new Error(`Invalid option for: ${arg}.`);
 
         options.lib = path.resolve(next);
+
+        if (!fs.existsSync(options.lib))
+          throw new Error(`Invalid node.lib path: '${next}'.`);
 
         i += 1;
 
@@ -387,6 +396,9 @@ function parseArgs(argv) {
 
         options.exp = path.resolve(next);
 
+        if (!fs.existsSync(options.exp))
+          throw new Error(`Invalid node.exp path: '${next}'.`);
+
         i += 1;
 
         break;
@@ -395,9 +407,9 @@ function parseArgs(argv) {
       case '-M':
       case '--mingw': {
         if (WINDOWS)
-          throw new Error('MinGW not supported on windows.');
+          throw new Error('MinGW not supported on Windows.');
 
-        options.mingw = true;
+        options.platform = 'mingw';
 
         if (options.bin === NODE_BINARY)
           options.bin = 'node.exe';
@@ -408,9 +420,9 @@ function parseArgs(argv) {
       case '-W':
       case '--wasm': {
         if (WINDOWS)
-          throw new Error('WASM not supported on windows.');
+          throw new Error('WASM not supported on Windows.');
 
-        options.wasm = true;
+        options.platform = 'wasm';
 
         break;
       }
@@ -419,10 +431,10 @@ function parseArgs(argv) {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
 
-        if (WINDOWS)
-          throw new Error('WASM not supported on windows.');
-
         options.wasi = path.resolve(next);
+
+        if (!fs.existsSync(options.wasi))
+          throw new Error(`Invalid wasi-sdk path: '${next}'.`);
 
         i += 1;
 
@@ -434,11 +446,23 @@ function parseArgs(argv) {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
 
-        if (WINDOWS)
-          throw new Error('MinGW not supported on windows.');
-
-        if (next !== 'x86' && next !== 'x64')
-          throw new Error('Architecture must be x86 or x64.');
+        switch (next) {
+          case 'x86':
+          case 'i386':
+          case 'i486':
+          case 'i586':
+          case 'i686':
+            next = 'x86';
+            break;
+          case 'x64':
+          case 'x86_64':
+          case 'x86-64':
+          case 'amd64':
+            next = 'x64';
+            break;
+          default:
+            throw new Error(`Invalid architecture: '${next}'.`);
+        }
 
         options.arch = next;
 
@@ -485,6 +509,7 @@ function parseArgs(argv) {
 const commands = {
   __proto__: null,
   install,
+  clear,
   configure,
   build,
   clean,
@@ -530,19 +555,20 @@ async function getWin32Lib(options) {
   // Explanation: It's impossible to build a DLL
   // with unresolved symbols. As a result, when
   // node.js is built, a .lib file is created,
-  // exposing all the necessary symbols.
+  // exposing stubs for all necessary symbols.
   //
   // When building an addon, MSVS must link to
   // this .lib file. Unfortunately, this .lib
   // file is specific to both the node version
   // and the architecture.
   //
-  // Further reading: http://edll.sourceforge.net/
-  //
-  // Node.js uses the ".def & .a" solution.
+  // We try to generate the import library on
+  // the fly. This is in contrast to other build
+  // systems which attempt to download it from
+  // nodejs.org.
   const base = options.bin.split('.')[0];
   const name = `${base}-${process.arch}-${NAPI_VERSION}.lib`;
-  const file = path.join(getCacheDir(), name);
+  const file = path.join(getCacheDirectory(), name);
   const machine = process.arch.toUpperCase();
 
   if (fs.existsSync(file))
@@ -552,14 +578,17 @@ async function getWin32Lib(options) {
 
   console.log('Looking for lib.exe...');
 
-  const lib = findLib(options.cmake) || 'lib.exe';
+  let lib = findLib(options.cmake);
 
-  if (lib === 'lib.exe')
+  if (!lib) {
     console.error('WARNING: Could not find lib.exe.');
-  else
-    console.log(`Found lib.exe: ${lib}`);
 
-  console.log(`Building ${file}...`);
+    lib = 'lib.exe'; // Try lib.exe. We might get lucky.
+  } else {
+    console.log('Found lib.exe: %s', lib);
+  }
+
+  console.log('Creating %s...', name);
 
   const result = tryExec(lib, [`/OUT:${file}`,
                                `/DEF:${options.def}`,
@@ -567,11 +596,13 @@ async function getWin32Lib(options) {
                                `/MACHINE:${machine}`]);
 
   if (!result) {
-    if (base !== 'node' && base !== 'nodejs')
-      throw new Error(`Could not build ${name}.`);
+    if (base !== 'node')
+      throw new Error(`Could not create ${name}.`);
 
-    console.error(`WARNING: Could not build ${name}.`);
+    console.error('WARNING: Could not create %s.', name);
 
+    // Try to download the import library
+    // from nodejs.org as a last resort.
     return getNodeLib(options.dist);
   }
 
@@ -581,7 +612,7 @@ async function getWin32Lib(options) {
 function getMingwLib(options) {
   const base = options.bin.split('.')[0];
   const name = `${base}-${options.arch}-${NAPI_VERSION}.lib`;
-  const file = path.join(getCacheDir(), name);
+  const file = path.join(getCacheDirectory(), name);
   const prefix = options.arch === 'x64' ? 'x86_64' : 'i686';
   const dlltool = `${prefix}-w64-mingw32-dlltool`;
   const machine = 'i386:x86-64';
@@ -597,7 +628,7 @@ function getMingwLib(options) {
                                    '-m', machine]);
 
   if (!result)
-    throw new Error(`Could not build ${name}.`);
+    throw new Error(`Could not create ${name}.`);
 
   return file;
 }
@@ -607,7 +638,7 @@ async function getNodeLib(dist) {
   const version = process.version.split('-')[0].substring(1);
   const url = `${dist}/v${version}/win-${arch}/node.lib`;
   const name = `node-${arch}-${version}.lib`;
-  const file = path.join(getCacheDir(), name);
+  const file = path.join(getCacheDirectory(), name);
 
   if (!fs.existsSync(file))
     await download(url, file);
@@ -623,12 +654,12 @@ function getNodeExp() {
   else
     name = '/lib/libnode.x';
 
-  const path_ = path.join(NODE_PREFIX, name);
+  const file = path.join(NODE_PREFIX, name);
 
-  if (!fs.existsSync(path_))
-    throw new Error(`Could not find exports file: ${path_}`);
+  if (!fs.existsSync(file))
+    throw new Error(`Could not find exports file: ${file}`);
 
-  return path_;
+  return file;
 }
 
 /*
@@ -682,7 +713,7 @@ function getArgs(argv) {
   return args;
 }
 
-function getCacheDir() {
+function getCacheDirectory() {
   if (WINDOWS) {
     // See: https://github.com/sindresorhus/env-paths
     let {LOCALAPPDATA} = process.env;
@@ -915,25 +946,35 @@ function runGYP(gyp, cmd, root) {
 
 function findLib(cmake) {
   // Abuse CMake to find out where MSVC is.
-  const file = path.join(getCacheDir(), 'sysinfo.log');
+  const dir = path.join(getCacheDirectory(), 'project');
+  const file = path.join(dir, 'CMakeLists.txt');
 
   if (!fs.existsSync(file)) {
-    const result = tryExec(cmake, ['--system-information', file]);
+    mkdirp(dir, 0o755);
 
-    if (!result)
-      return null;
-
-    if (!fs.existsSync(file))
-      return null;
+    fs.writeFileSync(file, 'project(x LANGUAGES C)\n'
+                         + 'message(STATUS "@@@CC=${CMAKE_C_COMPILER}@@@")\n');
   }
 
-  const txt = fs.readFileSync(file, 'utf8');
-  const m = /CMAKE_(?:C|CXX)_COMPILER == "([^"\n]+)"/.exec(txt);
+  let result;
+
+  try {
+    result = cp.spawnSync(cmake, ['.'], {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true
+    });
+  } catch (e) {
+    return null;
+  }
+
+  const m = /@@@CC=(.+?)@@@/.exec(result.stdout);
 
   if (!m)
     return null;
 
-  const bin = path.dirname(path.normalize(m[1]));
+  const cl = path.normalize(m[1]); // cl.exe
+  const bin = path.dirname(cl); // /path/to/msvc/bin
   const lib = path.join(bin, 'lib.exe');
 
   if (!fs.existsSync(lib))
@@ -1121,7 +1162,7 @@ function _download(url, file, resolve, reject) {
     agent: false
   };
 
-  console.log(`Downloading ${url}...`);
+  console.log('Downloading %s...', url);
 
   mkdirp(path.dirname(file), 0o755);
 
