@@ -155,6 +155,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
   Commands:
 
     install              install necessary files
+    list                 list currently installed files
     clear                clear cache
     configure            configure package
     build                build package

@@ -31,16 +31,10 @@ const WINDOWS = process.platform === 'win32';
 
 const IGNORE_EXTS = [
   '.dll',
-  '.dll.a',
   '.dylib',
-  '.exp',
-  '.ilk',
-  '.lib',
   '.node',
-  '.pdb',
-  '.so',
-  '.wasm',
-  '.x'
+  /\.so(?:\.\d+){0,3}$/,
+  '.wasm'
 ];
 
 const GYP_COMMANDS = [
@@ -57,7 +51,8 @@ const UNIX_PREFIXES = [
   '/usr',
   '/usr/local',
   '/opt',
-  '/opt/local'
+  '/opt/local',
+  '/'
 ];
 
 const HELP = `
@@ -87,6 +82,7 @@ const HELP = `
   Commands:
 
     install              install necessary files
+    list                 list currently installed files
     clear                clear cache
     configure            configure package
     build                build package
@@ -109,6 +105,24 @@ async function install(options, args) {
     await getWin32Lib(options);
   else if (options.platform === 'mingw')
     getMingwLib(options);
+}
+
+async function list(options, args) {
+  const exts = ['.lib', '.exp', '.x'];
+
+  let list;
+  try {
+    list = fs.readdirSync(getCacheDirectory());
+  } catch (e) {
+    return;
+  }
+
+  for (const name of list) {
+    const ext = path.extname(name);
+
+    if (exts.includes(ext))
+      console.log(name);
+  }
 }
 
 async function clear(options, args) {
@@ -509,6 +523,7 @@ function parseArgs(argv) {
 const commands = {
   __proto__: null,
   install,
+  list,
   clear,
   configure,
   build,
@@ -538,11 +553,13 @@ async function main(argv) {
   if (!hasExecutable(options.cmake))
     throw new Error(`CMake not available (${options.cmake}).`);
 
-  if (!isCMakeRoot(options.root))
-    throw new Error(`Invalid CMake root: ${options.root}`);
-
   if (!commands[options.cmd])
     throw new Error(`Unknown command: ${options.cmd}.`);
+
+  if (!['install', 'list', 'clear'].includes(options.cmd)) {
+    if (!isCMakeRoot(options.root))
+      throw new Error(`Invalid CMake root: ${options.root}`);
+  }
 
   await commands[options.cmd](options, options.args);
 }
@@ -606,6 +623,8 @@ async function getWin32Lib(options) {
     return getNodeLib(options.dist);
   }
 
+  console.log('Created %s.', name);
+
   return file;
 }
 
@@ -615,12 +634,14 @@ function getMingwLib(options) {
   const file = path.join(getCacheDirectory(), name);
   const prefix = options.arch === 'x64' ? 'x86_64' : 'i686';
   const dlltool = `${prefix}-w64-mingw32-dlltool`;
-  const machine = 'i386:x86-64';
+  const machine = options.arch === 'x64' ? 'i386:x86-64' : 'i386';
 
   if (fs.existsSync(file))
     return file;
 
   mkdirp(path.dirname(file), 0o755);
+
+  console.log('Creating %s...', name);
 
   const result = tryExec(dlltool, ['-y', file,
                                    '-d', options.def,
@@ -629,6 +650,8 @@ function getMingwLib(options) {
 
   if (!result)
     throw new Error(`Could not create ${name}.`);
+
+  console.log('Created %s.', name);
 
   return file;
 }
@@ -654,12 +677,14 @@ function getNodeExp() {
   else
     name = '/lib/libnode.x';
 
-  const file = path.join(NODE_PREFIX, name);
+  for (const prefix of UNIX_PREFIXES) {
+    const file = path.join(prefix, name);
 
-  if (!fs.existsSync(file))
-    throw new Error(`Could not find exports file: ${file}`);
+    if (fs.existsSync(file))
+      return file;
+  }
 
-  return file;
+  throw new Error(`Could not find exports file: ${name}.`);
 }
 
 /*
@@ -714,17 +739,30 @@ function getArgs(argv) {
 }
 
 function getCacheDirectory() {
+  // See: https://github.com/sindresorhus/env-paths
+  const home = os.homedir();
+
   if (WINDOWS) {
-    // See: https://github.com/sindresorhus/env-paths
-    let {LOCALAPPDATA} = process.env;
+    let appData = process.env.LOCALAPPDATA;
 
-    if (!LOCALAPPDATA)
-      LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
+    if (!appData)
+      appData = path.resolve(home, 'AppData', 'Local');
 
-    return path.resolve(LOCALAPPDATA, 'cmake-node', 'Cache');
+    return path.resolve(appData, 'cmake-node', 'Cache');
   }
 
-  return path.resolve(os.homedir(), '.cache', 'cmake-node');
+  if (process.platform === 'darwin') {
+    const cache = path.resolve(home, 'Library', 'Caches');
+
+    return path.join(cache, 'cmake-node');
+  }
+
+  let cache = process.env.XDG_CACHE_HOME;
+
+  if (!cache)
+    cache = path.resolve(home, '.cache');
+
+  return path.resolve(cache, 'cmake-node');
 }
 
 function getBuildDirectory(options) {
@@ -1037,10 +1075,17 @@ function _remove(path_, ignore) {
   let stat = null;
 
   if (ignore.length > 0) {
-    const ext = path.extname(path_);
+    const base = path.basename(path_);
 
-    if (ignore.includes(ext))
-      return 1;
+    for (const ext of ignore) {
+      if (ext instanceof RegExp) {
+        if (ext.test(base))
+          return 1;
+      } else {
+        if (base.endsWith(ext))
+          return 1;
+      }
+    }
   }
 
   try {
