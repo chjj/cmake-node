@@ -987,15 +987,13 @@ function findLib(cmake) {
   const dir = path.join(getCacheDirectory(), 'project');
   const file = path.join(dir, 'CMakeLists.txt');
 
-  if (!fs.existsSync(file)) {
-    mkdirp(dir, 0o755);
+  remove(dir);
+  mkdirp(dir, 0o755);
 
-    fs.writeFileSync(file, 'project(x LANGUAGES C)\n'
-                         + 'message(STATUS "@@@CC=${CMAKE_C_COMPILER}@@@")\n');
-  }
+  fs.writeFileSync(file, 'project(x LANGUAGES C)\n'
+                       + 'message(STATUS "@@@CC=${CMAKE_C_COMPILER}@@@")\n');
 
   let result;
-
   try {
     result = cp.spawnSync(cmake, ['.'], {
       cwd: dir,
