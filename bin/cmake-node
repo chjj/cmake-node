@@ -110,14 +110,14 @@ async function install(options, args) {
 async function list(options, args) {
   const exts = ['.lib', '.exp', '.x'];
 
-  let list;
+  let names;
   try {
-    list = fs.readdirSync(getCacheDirectory());
+    names = fs.readdirSync(getCacheDirectory());
   } catch (e) {
     return;
   }
 
-  for (const name of list) {
+  for (const name of names) {
     const ext = path.extname(name);
 
     if (exts.includes(ext))
