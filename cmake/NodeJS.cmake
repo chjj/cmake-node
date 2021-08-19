@@ -31,7 +31,6 @@ set(_node_ldflags)
 set(_node_libs)
 
 list(APPEND _node_defines BUILDING_NODE_EXTENSION)
-list(APPEND _node_defines BUILDING_WITH_CMAKE_NODE)
 list(APPEND _node_includes "${_node_dir}/../include/node")
 
 if(WIN32)
