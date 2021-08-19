@@ -7,7 +7,7 @@ if(DEFINED __NODEJS_CMAKE__)
 endif()
 
 set(__NODEJS_CMAKE__ 1)
-set(CMAKE_BUILDING_NODE_EXTENSION 1)
+set(BUILDING_NODE_EXTENSION 1)
 
 if(NOT CMAKE_SYSTEM_NAME)
   message(FATAL_ERROR "System is not configured!")
