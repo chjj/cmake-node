@@ -23,11 +23,11 @@ const VERSION = '0.1.1';
 const NAPI_VERSION = 8;
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
-const MINGW_PATH = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
-const DEF_PATH = path.resolve(__dirname, '..', 'etc', 'node.def');
-const WASI_RUN_PATH = path.join(__dirname, '..', 'scripts', 'wasi-run');
+const MINGW_TOOLCHAIN = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
+const NODE_DEF = path.resolve(__dirname, '..', 'etc', 'node.def');
+const WASI_RUN = path.join(__dirname, '..', 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
-const WINDOWS = process.platform === 'win32';
+const WIN32 = process.platform === 'win32';
 
 const IGNORE_EXTS = [
   '.dll',
@@ -69,6 +69,7 @@ const HELP = `
     -f, --fallback       fall back to node-gyp if cmake is not found
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
+    -s, --strip          strip non-global symbols from modules
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
@@ -102,7 +103,7 @@ const HELP = `
  */
 
 async function install(options, args) {
-  if (WINDOWS)
+  if (WIN32)
     await getWin32Lib(options);
   else if (options.platform === 'mingw')
     getMingwLib(options);
@@ -137,7 +138,7 @@ async function configure(options, args) {
 
   args = prependModulePath(args);
 
-  if (WINDOWS) {
+  if (WIN32) {
     const NODE_LIB = options.lib || (await getWin32Lib(options));
 
     exec(options.cmake, ['-D', `NODE_BIN=${options.bin}`,
@@ -149,32 +150,28 @@ async function configure(options, args) {
       '-D', `CMAKE_BUILD_TYPE=${options.config}`
     ];
 
-    if (process.platform === 'aix' || process.platform === 'os390') {
-      const NODE_EXP = options.exp || getNodeExp();
-
-      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
-    }
-
     if (options.platform === 'mingw') {
       const MINGW_ARCH = options.arch === 'x64' ? 'x86_64' : 'i686';
       const NODE_LIB = options.lib || getMingwLib(options);
 
-      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_PATH}`);
+      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_TOOLCHAIN}`);
       argv.push('-D', `MINGW_ARCH=${MINGW_ARCH}`);
       argv.push('-D', `NODE_BIN=${options.bin}`);
       argv.push('-D', `NODE_LIB=${NODE_LIB}`);
-    }
+    } else if (options.platform === 'wasm') {
+      const WASI_TOOLCHAIN = path.join(options.wasi, 'share',
+                                                     'cmake',
+                                                     'wasi-sdk.cmake');
 
-    if (options.platform === 'wasm') {
-      const WASI_PATH = path.join(options.wasi, 'share',
-                                                'cmake',
-                                                'wasi-sdk.cmake');
-
-      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${WASI_PATH}`);
-      argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${WASI_RUN_PATH}`);
+      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${WASI_TOOLCHAIN}`);
+      argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${WASI_RUN}`);
       argv.push('-D', `WASI_SDK_PREFIX=${options.wasi}`);
 
       process.env.NODEJS = process.execPath;
+    } else if (process.platform === 'aix' || process.platform === 'os390') {
+      const NODE_EXP = options.exp || getNodeExp();
+
+      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
     }
 
     argv.push(...args);
@@ -189,7 +186,7 @@ async function build(options, args) {
 
   mkdirp(build, 0o755);
 
-  if (WINDOWS) {
+  if (WIN32) {
     exec(options.cmake, ['--build', '.',
                          '--config', options.config,
                          ...args], build);
@@ -199,20 +196,46 @@ async function build(options, args) {
 
   if (options.production)
     await clean(options, []);
+
+  if (options.strip)
+    await strip(options, []);
 }
 
 async function strip(options) {
-  if (WINDOWS || options.platform === 'mingw')
-    return;
+  let stripper, extension;
 
-  if (process.platform === 'aix') {
-    // Unsure if `strip -r` works properly.
-    return;
-  }
+  if (options.platform) {
+    if (options.platform === 'mingw') {
+      // Skip for non-ELF.
+      return;
+    }
 
-  if (process.platform === 'os390') {
-    // `strip` is a no-op on z/os.
-    return;
+    if (options.platform !== 'wasm')
+      throw new Error('Unexpected platform.');
+
+    if (!hasExecutable('wasm-strip')) {
+      // wasm-strip not installed.
+      return;
+    }
+
+    stripper = (file) => tryExec('wasm-strip', [file]);
+    extension = '.wasm';
+  } else {
+    for (const arg of options.args) {
+      if (arg.includes('CMAKE_TOOLCHAIN_FILE='))
+        throw new Error('Cannot strip when cross-compiling.');
+    }
+
+    switch (process.platform) {
+      case 'win32':
+      case 'aix':
+      case 'os390':
+        // Skip for non-ELF.
+        return;
+    }
+
+    stripper = (file) => tryExec('strip', ['-x', file]);
+    extension = '.node';
   }
 
   const build = path.join(options.root, 'build');
@@ -233,13 +256,8 @@ async function strip(options) {
     }
 
     for (const name of list) {
-      const file = path.join(subdir, name);
-      const ext = path.extname(name);
-
-      if (ext === '.node')
-        tryExec('strip', ['-x', file]);
-      else if (ext === '.wasm')
-        tryExec('wasm-strip', [file]);
+      if (path.extname(name) === extension)
+        stripper(path.join(subdir, name));
     }
   }
 }
@@ -273,7 +291,7 @@ async function ui(options, args) {
 
   mkdirp(build, 0o755);
 
-  let name = WINDOWS ? 'cmake-gui.exe' : 'ccmake';
+  let name = WIN32 ? 'cmake-gui.exe' : 'ccmake';
 
   if (isPath(options.cmake))
     name = path.resolve(options.cmake, '..', name);
@@ -294,11 +312,11 @@ function parseArgs(argv) {
     fallback: false,
     production: false,
     gyp: null,
-    bin: NODE_BINARY,
-    def: DEF_PATH,
+    bin: null,
+    def: NODE_DEF,
     lib: null,
     exp: null,
-    platform: '',
+    platform: null,
     wasi: '/opt/wasi-sdk',
     arch: 'x64',
     cmd: null,
@@ -409,6 +427,12 @@ function parseArgs(argv) {
         break;
       }
 
+      case '-s':
+      case '--strip': {
+        options.strip = true;
+        break;
+      }
+
       case '--node-bin': {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
@@ -464,20 +488,17 @@ function parseArgs(argv) {
 
       case '-M':
       case '--mingw': {
-        if (WINDOWS)
+        if (WIN32)
           throw new Error('MinGW not supported on Windows.');
 
         options.platform = 'mingw';
-
-        if (options.bin === NODE_BINARY)
-          options.bin = 'node.exe';
 
         break;
       }
 
       case '-W':
       case '--wasm': {
-        if (WINDOWS)
+        if (WIN32)
           throw new Error('WASM not supported on Windows.');
 
         options.platform = 'wasm';
@@ -491,9 +512,6 @@ function parseArgs(argv) {
 
         options.wasi = path.resolve(next);
 
-        if (!fs.existsSync(options.wasi))
-          throw new Error(`Invalid wasi-sdk path: '${next}'.`);
-
         i += 1;
 
         break;
@@ -506,6 +524,7 @@ function parseArgs(argv) {
 
         switch (next) {
           case 'x86':
+          case 'ia32':
           case 'i386':
           case 'i486':
           case 'i586':
@@ -557,6 +576,16 @@ function parseArgs(argv) {
     process.exit(0);
   }
 
+  if (!options.bin) {
+    if (options.platform === 'mingw')
+      options.bin = 'node.exe';
+    else
+      options.bin = NODE_BINARY;
+  }
+
+  if (options.platform === 'wasm' && !fs.existsSync(options.wasi))
+    throw new Error(`Invalid wasi-sdk path: '${next}'.`);
+
   return options;
 }
 
@@ -589,8 +618,13 @@ async function main(argv) {
 
     runGYP(options.gyp, options.cmd, options.root);
 
-    if (options.production && options.cmd.endsWith('build'))
-      await clean(options, []);
+    if (options.cmd.endsWith('build')) {
+      if (options.production)
+        await clean(options, []);
+
+      if (options.strip)
+        await strip(options, []);
+    }
 
     return;
   }
@@ -787,7 +821,7 @@ function getCacheDirectory() {
   // See: https://github.com/sindresorhus/env-paths
   const home = os.homedir();
 
-  if (WINDOWS) {
+  if (WIN32) {
     let appData = process.env.LOCALAPPDATA;
 
     if (!appData)
@@ -811,7 +845,7 @@ function getCacheDirectory() {
 }
 
 function getBuildDirectory(options) {
-  if (WINDOWS)
+  if (WIN32)
     return path.join(options.root, 'build');
 
   return path.join(options.root, 'build', options.config);
@@ -819,7 +853,7 @@ function getBuildDirectory(options) {
 
 function prependModulePath(args) {
   // See: https://github.com/chjj/cmake-node/issues/1
-  const mpath = WINDOWS ? MODULE_PATH.replace(/\\/g, '/') : MODULE_PATH;
+  const mpath = WIN32 ? MODULE_PATH.replace(/\\/g, '/') : MODULE_PATH;
   const out = ['-D', ''];
 
   let paths = null;
@@ -915,14 +949,14 @@ function shouldFallback(options) {
 }
 
 function findCMake() {
-  const cmake = WINDOWS ? 'cmake.exe' : 'cmake';
+  const cmake = WIN32 ? 'cmake.exe' : 'cmake';
 
   if (hasExecutable(cmake))
     return cmake;
 
   const paths = [];
 
-  if (WINDOWS) {
+  if (WIN32) {
     for (const prefix of [process.env.LOCALAPPDATA,
                           process.env.PROGRAMFILES,
                           process.env['PROGRAMFILES(X86)']]) {
@@ -945,14 +979,14 @@ function findCMake() {
 }
 
 function findGYP(root) {
-  const gyp = WINDOWS ? 'node-gyp.cmd' : 'node-gyp';
+  const gyp = WIN32 ? 'node-gyp.cmd' : 'node-gyp';
 
   if (hasExecutable(gyp))
     return gyp;
 
   const paths = [];
 
-  if (WINDOWS) {
+  if (WIN32) {
     let {APPDATA} = process.env;
 
     if (!APPDATA)
@@ -1065,7 +1099,7 @@ function findLib(cmake) {
 }
 
 function isPath(str) {
-  if (WINDOWS && str.includes('/'))
+  if (WIN32 && str.includes('/'))
     return true;
 
   return str.includes(path.sep);
@@ -1075,7 +1109,7 @@ function safeStat(path_) {
   try {
     return fs.lstatSync(path_);
   } catch (e) {
-    if (e.code === 'EPERM' && WINDOWS) {
+    if (e.code === 'EPERM' && WIN32) {
       try {
         fs.chmodSync(path_, 0o666);
       } catch (e) {
@@ -1162,7 +1196,7 @@ function _remove(path_, ignore) {
         if (e.code === 'ENOENT')
           return 0;
 
-        if (e.code === 'ENOTEMPTY' && WINDOWS) {
+        if (e.code === 'ENOTEMPTY' && WIN32) {
           if (tries < 5) {
             tries += 1;
             continue;

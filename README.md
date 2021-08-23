@@ -142,6 +142,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -f, --fallback       fall back to node-gyp if cmake is not found
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
+    -s, --strip          strip non-global symbols from modules
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
