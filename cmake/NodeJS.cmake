@@ -9,10 +9,6 @@ endif()
 set(__NODEJS_CMAKE__ 1)
 set(BUILDING_NODE_EXTENSION 1)
 
-if(NOT CMAKE_SYSTEM_NAME)
-  message(FATAL_ERROR "System is not configured!")
-endif()
-
 if(WIN32)
   set(NODE_BIN "node.exe" CACHE STRING "Node.js executable name")
   set(NODE_LIB "node.lib" CACHE FILEPATH "Path to node.lib")
@@ -122,18 +118,7 @@ function(add_node_module target)
                                              C_VISIBILITY_PRESET hidden
                                              CXX_VISIBILITY_PRESET hidden)
 
-  if(MINGW)
-    # An import library isn't actually necessary since
-    # this module will be dynamically loaded and stubs
-    # aren't needed, but we make the suffix compatible
-    # with windows anyway.
-    set_target_properties(${target} PROPERTIES IMPORT_PREFIX ""
-                                               IMPORT_SUFFIX ".lib")
-  endif()
-
   if(WASI)
-    set_target_properties(${target} PROPERTIES SUFFIX ".wasm"
-                                               C_VISIBILITY_PRESET default
-                                               CXX_VISIBILITY_PRESET default)
+    set_property(TARGET ${target} PROPERTY SUFFIX ".wasm")
   endif()
 endfunction()
