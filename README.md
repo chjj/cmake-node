@@ -159,6 +159,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     clear                clear cache
     configure            configure package
     build                build package
+    strip                strip modules
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package

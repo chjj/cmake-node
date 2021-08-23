@@ -86,6 +86,7 @@ const HELP = `
     clear                clear cache
     configure            configure package
     build                build package
+    strip                strip modules
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package
@@ -198,6 +199,49 @@ async function build(options, args) {
 
   if (options.production)
     await clean(options, []);
+}
+
+async function strip(options) {
+  if (WINDOWS || options.platform === 'mingw')
+    return;
+
+  if (process.platform === 'aix') {
+    // Unsure if `strip -r` works properly.
+    return;
+  }
+
+  if (process.platform === 'os390') {
+    // `strip` is a no-op on z/os.
+    return;
+  }
+
+  const build = path.join(options.root, 'build');
+
+  for (const type of ['Debug',
+                      'Release',
+                      'MinSizeRel',
+                      'RelWithDebInfo']) {
+    const subdir = path.join(build, type);
+
+    let list;
+    try {
+      list = fs.readdirSync(subdir);
+    } catch (e) {
+      if (e.code === 'ENOENT')
+        continue;
+      throw e;
+    }
+
+    for (const name of list) {
+      const file = path.join(subdir, name);
+      const ext = path.extname(name);
+
+      if (ext === '.node')
+        tryExec('strip', ['-x', file]);
+      else if (ext === '.wasm')
+        tryExec('wasm-strip', [file]);
+    }
+  }
 }
 
 async function clean(options, args) {
@@ -527,6 +571,7 @@ const commands = {
   clear,
   configure,
   build,
+  strip,
   clean,
   reconfigure,
   rebuild,
