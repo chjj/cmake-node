@@ -150,7 +150,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -M, --mingw          cross-compile for win32 using mingw
     -W, --wasm           cross-compile for wasm using wasi-sdk
     --wasi-sdk <path>    path to wasi-sdk
-    -A, --arch <arch>    select mingw arch (x86 or x64)
+    -A, --arch <arch>    select win32/mingw arch (ia32, x64, arm, arm64)
     -h, --help           output usage information
 
   Commands:
