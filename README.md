@@ -123,15 +123,15 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -r, --root <path>    path to root directory (default: .)
     -p, --production     clean all files except for .node files
-    --node-bin <name>    name of node binary (windows only)
-    --node-def <name>    path to node.def (windows only)
-    --node-lib <path>    path to node.lib (windows only)
+    --node-bin <name>    name of node binary (win32 only)
+    --node-def <name>    path to node.def (win32 only)
+    --node-lib <path>    path to node.lib (win32 only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -M, --mingw          cross-compile for win32 using mingw
     -W, --wasm           cross-compile for wasm using wasi-sdk
     --toolchain <file>   path to toolchain file
     -G, --gen <name>     generator name (see cmake --help)
-    -A, --arch <arch>    select win32/mingw arch (ia32, x64, arm, arm64)
+    -A, --arch <arch>    select win32 arch (ia32, x64, arm, arm64)
     --wasi-sdk <path>    path to wasi-sdk
     -h, --help           output usage information
 
