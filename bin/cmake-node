@@ -82,15 +82,6 @@ const DLLTOOL_MACHINES = {
   'arm64': 'arm64'
 };
 
-// options.arch -> nodejs.org/dist
-const DIST_ARCHES = {
-  __proto__: null,
-  'ia32': 'x86',
-  'x64': 'x64',
-  'arm': 'arm',
-  'arm64': 'arm64'
-};
-
 const HELP = `
   Usage: cmake-node [options] [command] -- [cmake args]
 
@@ -99,7 +90,6 @@ const HELP = `
     -v, --version        output the version number
     -c, --config <type>  build type (default: Release)
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
-    -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
@@ -135,14 +125,14 @@ const HELP = `
  * Commands
  */
 
-async function install(options, args) {
+function install(options, args) {
   if (options.platform === 'win32')
-    await getWin32Lib(options);
+    getWin32Lib(options);
   else if (options.platform === 'mingw')
     getMingwLib(options);
 }
 
-async function list(options, args) {
+function list(options, args) {
   const exts = ['.lib', '.exp', '.x'];
 
   let names;
@@ -160,11 +150,11 @@ async function list(options, args) {
   }
 }
 
-async function clear(options, args) {
+function clear(options, args) {
   remove(getCacheDirectory());
 }
 
-async function configure(options, args) {
+function configure(options, args) {
   const build = getBuildDirectory(options);
   const argv = [];
 
@@ -183,7 +173,7 @@ async function configure(options, args) {
     argv.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
 
   if (options.platform === 'win32') {
-    const NODE_LIB = options.lib || (await getWin32Lib(options));
+    const NODE_LIB = options.lib || getWin32Lib(options);
 
     argv.push('-D', `NODE_BIN=${options.bin}`);
     argv.push('-D', `NODE_LIB=${unixify(NODE_LIB)}`);
@@ -228,7 +218,7 @@ async function configure(options, args) {
   exec(options.cmake, argv, build);
 }
 
-async function build(options, args) {
+function build(options, args) {
   const [build, multi] = findBuildDirectory(options);
 
   if (multi) {
@@ -240,10 +230,10 @@ async function build(options, args) {
   }
 
   if (options.production)
-    await clean(options, []);
+    clean(options, []);
 }
 
-async function clean(options, args) {
+function clean(options, args) {
   const build = path.join(options.root, 'build');
 
   if (options.production)
@@ -252,7 +242,7 @@ async function clean(options, args) {
     remove(build);
 }
 
-async function reconfigure(options, args) {
+function reconfigure(options, args) {
   let build = null;
 
   try {
@@ -265,16 +255,16 @@ async function reconfigure(options, args) {
   if (build)
     remove(path.join(build, 'CMakeCache.txt'));
 
-  await configure(options, args);
+  configure(options, args);
 }
 
-async function rebuild(options, args) {
-  await clean({ root: options.root }, []);
-  await configure(options, args);
-  await build(options, []);
+function rebuild(options, args) {
+  clean({ root: options.root }, []);
+  configure(options, args);
+  build(options, []);
 }
 
-async function ui(options, args) {
+function ui(options, args) {
   const [build] = findBuildDirectory(options);
 
   let name = WIN32 ? 'cmake-gui.exe' : 'ccmake';
@@ -293,7 +283,6 @@ function parseArgs(argv) {
   const options = {
     config: 'Release',
     cmake: findCMake(),
-    dist: 'https://nodejs.org/dist',
     root: '.',
     production: false,
     bin: null,
@@ -353,18 +342,6 @@ function parseArgs(argv) {
           throw new Error(`Invalid option for: ${arg}.`);
 
         options.cmake = next;
-
-        i += 1;
-
-        break;
-      }
-
-      case '-d':
-      case '--dist': {
-        if (!next || next[0] === '-')
-          throw new Error(`Invalid option for: ${arg}.`);
-
-        options.dist = next;
 
         i += 1;
 
@@ -648,7 +625,7 @@ const commands = {
   ui
 };
 
-async function main(argv) {
+function main(argv) {
   const options = parseArgs(argv);
 
   if (!hasExecutable(options.cmake))
@@ -662,14 +639,14 @@ async function main(argv) {
       throw new Error(`Invalid CMake root: ${options.root}`);
   }
 
-  await commands[options.cmd](options, options.args);
+  commands[options.cmd](options, options.args);
 }
 
 /*
  * Installation Files
  */
 
-async function getWin32Lib(options) {
+function getWin32Lib(options) {
   // Explanation: It's impossible to build a DLL
   // with unresolved symbols. As a result, when
   // node.js is built, a .lib file is created,
@@ -713,13 +690,8 @@ async function getWin32Lib(options) {
                                `/NAME:${options.bin}`,
                                `/MACHINE:${machine}`]);
 
-  if (!result) {
-    console.error('WARNING: Could not create %s.', name);
-
-    // Try to download the import library
-    // from nodejs.org as a last resort.
-    return getNodeLib(options);
-  }
+  if (!result)
+    throw new Error(`Could not create ${name}.`);
 
   console.log('Created %s.', name);
 
@@ -750,24 +722,6 @@ function getMingwLib(options) {
     throw new Error(`Could not create ${name}.`);
 
   console.log('Created %s.', name);
-
-  return file;
-}
-
-async function getNodeLib(options) {
-  const arch = DIST_ARCHES[options.arch];
-  const version = process.version.split('-')[0].substring(1);
-  const url = `${options.dist}/v${version}/win-${arch}/node.lib`;
-  const name = `node-${version}-${options.arch}.lib`;
-  const file = path.join(getCacheDirectory(), name);
-
-  if (!fs.existsSync(file)) {
-    console.log('Downloading %s...', url);
-
-    await download(url, file);
-
-    console.log('Finished downloading %s.', file);
-  }
 
   return file;
 }
@@ -1228,94 +1182,6 @@ function mkdirp(dir, mode) {
         throw e;
     }
   }
-}
-
-async function download(url, file) {
-  return new Promise((resolve, reject) => {
-    try {
-      _download(url, file, resolve, reject);
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
-function _download(url, file, resolve, reject) {
-  const {parse} = require('url');
-  const parsed = parse(url);
-  const https = parsed.protocol === 'https:';
-  const backend = https ? require('https') : require('http');
-
-  const options = {
-    method: 'GET',
-    host: parsed.host,
-    port: parsed.port || (https ? 443 : 80),
-    path: parsed.path,
-    agent: false
-  };
-
-  mkdirp(path.dirname(file), 0o755);
-
-  const req = backend.request(options);
-
-  let res = null;
-  let write = null;
-  let done = false;
-
-  const destroy = (stream) => {
-    try {
-      if (stream)
-        stream.destroy();
-    } catch (e) {
-      ;
-    }
-  };
-
-  const error = (err) => {
-    if (!done) {
-      done = true;
-      destroy(req);
-      destroy(res);
-      destroy(write);
-      reject(err);
-    }
-  };
-
-  const finish = () => {
-    if (!done) {
-      done = true;
-      resolve();
-    }
-  };
-
-  const handle = () => {
-    res.on('error', error);
-
-    if (res.statusCode !== 200)
-      throw new Error(`Status code: ${res.statusCode}`);
-
-    if (res.headers.location)
-      throw new Error('HTTP request was redirected.');
-
-    write = fs.createWriteStream(file);
-
-    write.on('error', error);
-    write.on('finish', finish);
-
-    res.pipe(write);
-  };
-
-  req.on('response', (res_) => {
-    res = res_;
-    try {
-      handle();
-    } catch (e) {
-      error(e);
-    }
-  });
-
-  req.on('error', error);
-  req.end();
 }
 
 /*

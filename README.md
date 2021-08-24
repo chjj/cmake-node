@@ -121,7 +121,6 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -v, --version        output the version number
     -c, --config <type>  build type (default: Release)
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
-    -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
