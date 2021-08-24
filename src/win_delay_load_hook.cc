@@ -22,7 +22,7 @@
  *   is renamed.
  */
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 #  pragma managed(push, off)
 #endif
 
@@ -34,7 +34,7 @@
 #include <delayimp.h>
 #include <string.h>
 
-#ifdef _MSC_VER
+#ifndef __MINGW32__
 #  pragma comment(lib, "kernel32.lib")
 #  pragma comment(lib, "delayimp.lib")
 #endif
@@ -56,6 +56,6 @@ load_exe_hook(unsigned int event, DelayLoadInfo *info) {
 
 decltype(__pfnDliNotifyHook2) __pfnDliNotifyHook2 = load_exe_hook;
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 #  pragma managed(pop)
 #endif
