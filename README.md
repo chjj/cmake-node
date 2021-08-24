@@ -138,19 +138,19 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
-    -l, --location       print location of the include directory
     -f, --fallback       fall back to node-gyp if cmake is not found
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
-    -s, --strip          strip non-global symbols from modules
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -M, --mingw          cross-compile for win32 using mingw
     -W, --wasm           cross-compile for wasm using wasi-sdk
-    --wasi-sdk <path>    path to wasi-sdk
+    --toolchain <file>   path to toolchain file
+    -G, --gen <name>     generator name (see cmake --help)
     -A, --arch <arch>    select win32/mingw arch (ia32, x64, arm, arm64)
+    --wasi-sdk <path>    path to wasi-sdk
     -h, --help           output usage information
 
   Commands:
@@ -160,7 +160,6 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     clear                clear cache
     configure            configure package
     build                build package
-    strip                strip modules
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package

@@ -110,19 +110,19 @@ const HELP = `
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
-    -l, --location       print location of the include directory
     -f, --fallback       fall back to node-gyp if cmake is not found
     -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
-    -s, --strip          strip non-global symbols from modules
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)
     --node-lib <path>    path to node.lib (windows only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     -M, --mingw          cross-compile for win32 using mingw
     -W, --wasm           cross-compile for wasm using wasi-sdk
-    --wasi-sdk <path>    path to wasi-sdk
+    --toolchain <file>   path to toolchain file
+    -G, --gen <name>     generator name (see cmake --help)
     -A, --arch <arch>    select win32/mingw arch (ia32, x64, arm, arm64)
+    --wasi-sdk <path>    path to wasi-sdk
     -h, --help           output usage information
 
   Commands:
@@ -132,7 +132,6 @@ const HELP = `
     clear                clear cache
     configure            configure package
     build                build package
-    strip                strip modules
     clean                clean root directory
     reconfigure          reconfigure package
     rebuild              rebuild package
@@ -178,72 +177,72 @@ async function clear(options, args) {
 
 async function configure(options, args) {
   const build = getBuildDirectory(options);
+  const argv = [];
 
-  mkdirp(build, 0o755);
+  if (options.generator)
+    argv.push('-G', options.generator);
 
-  args = prependModulePath(args);
+  if (!options.generator || options.generator.startsWith('Visual Studio')) {
+    if (options.arch !== process.arch)
+      argv.push('-A', MSVC_ARCHES[options.arch]);
+  }
+
+  if (options.toolchain)
+    argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${unixify(options.toolchain)}`);
+
+  if (!options.multi)
+    argv.push('-D', `CMAKE_BUILD_TYPE=${options.config}`);
 
   if (options.platform === 'win32') {
     const NODE_LIB = options.lib || (await getWin32Lib(options));
 
-    const argv = [
-      '-D', `NODE_BIN=${options.bin}`,
-      '-D', `NODE_LIB=${NODE_LIB}`
-    ];
+    argv.push('-D', `NODE_BIN=${options.bin}`);
+    argv.push('-D', `NODE_LIB=${unixify(NODE_LIB)}`);
+  } else if (options.platform === 'aix' || options.platform === 'os390') {
+    const NODE_EXP = options.exp || getNodeExp(options);
 
-    if (options.arch !== process.arch)
-      argv.push('-A', MSVC_ARCHES[options.arch]);
+    if (options.platform === 'aix')
+      argv.push('-D', `NODE_ARCH=${options.arch}`);
 
-    argv.push(...args);
-    argv.push('..');
+    argv.push('-D', `NODE_EXP=${NODE_EXP}`);
+  } else if (options.platform === 'mingw') {
+    const MINGW_ARCH = MINGW_PREFIXES[options.arch];
+    const NODE_LIB = options.lib || getMingwLib(options);
 
-    exec(options.cmake, argv, build);
-  } else {
-    const argv = [
-      '-G', 'Unix Makefiles',
-      '-D', `CMAKE_BUILD_TYPE=${options.config}`
-    ];
+    argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_TOOLCHAIN}`);
+    argv.push('-D', `MINGW_ARCH=${MINGW_ARCH}`);
+    argv.push('-D', `NODE_BIN=${options.bin}`);
+    argv.push('-D', `NODE_LIB=${NODE_LIB}`);
+  } else if (options.platform === 'wasm') {
+    const WASI_TOOLCHAIN = path.join(options.wasi, 'share',
+                                                   'cmake',
+                                                   'wasi-sdk.cmake');
 
-    if (options.platform === 'aix' || options.platform === 'os390') {
-      const NODE_EXP = options.exp || getNodeExp(options);
+    argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${unixify(WASI_TOOLCHAIN)}`);
+    argv.push('-D', `WASI_SDK_PREFIX=${unixify(options.wasi)}`);
 
-      if (options.platform === 'aix')
-        argv.push('-D', `NODE_ARCH=${options.arch}`);
-
-      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
-    } else if (options.platform === 'mingw') {
-      const MINGW_ARCH = MINGW_PREFIXES[options.arch];
-      const NODE_LIB = options.lib || getMingwLib(options);
-
-      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${MINGW_TOOLCHAIN}`);
-      argv.push('-D', `MINGW_ARCH=${MINGW_ARCH}`);
-      argv.push('-D', `NODE_BIN=${options.bin}`);
-      argv.push('-D', `NODE_LIB=${NODE_LIB}`);
-    } else if (options.platform === 'wasm') {
-      const WASI_TOOLCHAIN = path.join(options.wasi, 'share',
-                                                     'cmake',
-                                                     'wasi-sdk.cmake');
-
-      argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${WASI_TOOLCHAIN}`);
+    if (!WIN32) {
       argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${WASI_RUN}`);
-      argv.push('-D', `WASI_SDK_PREFIX=${options.wasi}`);
-
       process.env.NODEJS = process.execPath;
     }
-
-    argv.push(...args);
-    argv.push('../..');
-
-    exec(options.cmake, argv, build);
   }
-}
 
-async function build(options, args) {
-  const build = getBuildDirectory(options);
+  argv.push(...prependModulePath(args));
+
+  if (options.multi)
+    argv.push('..');
+  else
+    argv.push('../..');
 
   mkdirp(build, 0o755);
 
-  if (options.platform === 'win32') {
+  exec(options.cmake, argv, build);
+}
+
+async function build(options, args) {
+  const [build, multi] = findBuildDirectory(options);
+
+  if (multi) {
     exec(options.cmake, ['--build', '.',
                          '--config', options.config,
                          ...args], build);
@@ -253,58 +252,6 @@ async function build(options, args) {
 
   if (options.production)
     await clean(options, []);
-
-  if (options.strip)
-    await strip(options, []);
-}
-
-async function strip(options, args) {
-  let stripper, extension;
-
-  switch (options.platform) {
-    case 'win32':
-    case 'mingw':
-    case 'aix':
-    case 'os390':
-      // Skip for non-ELF.
-      return;
-  }
-
-  if (options.platform === 'wasm') {
-    if (!hasExecutable('wasm-strip')) {
-      // wasm-strip not installed.
-      return;
-    }
-
-    stripper = file => tryExec('wasm-strip', [file]);
-    extension = '.wasm';
-  } else {
-    stripper = file => tryExec('strip', ['-x', file]);
-    extension = '.node';
-  }
-
-  const build = path.join(options.root, 'build');
-
-  for (const type of ['Debug',
-                      'Release',
-                      'MinSizeRel',
-                      'RelWithDebInfo']) {
-    const subdir = path.join(build, type);
-
-    let list;
-    try {
-      list = fs.readdirSync(subdir);
-    } catch (e) {
-      if (e.code === 'ENOENT')
-        continue;
-      throw e;
-    }
-
-    for (const name of list) {
-      if (path.extname(name) === extension)
-        stripper(path.join(subdir, name));
-    }
-  }
 }
 
 async function clean(options, args) {
@@ -317,10 +264,17 @@ async function clean(options, args) {
 }
 
 async function reconfigure(options, args) {
-  const build = getBuildDirectory(options);
-  const cache = path.join(build, 'CMakeCache.txt');
+  let build = null;
 
-  remove(cache);
+  try {
+    [build] = findBuildDirectory(options);
+  } catch (e) {
+    if (e.message !== 'Project is not configured.')
+      throw e;
+  }
+
+  if (build)
+    remove(path.join(build, 'CMakeCache.txt'));
 
   await configure(options, args);
 }
@@ -332,9 +286,7 @@ async function rebuild(options, args) {
 }
 
 async function ui(options, args) {
-  const build = getBuildDirectory(options);
-
-  mkdirp(build, 0o755);
+  const [build] = findBuildDirectory(options);
 
   let name = WIN32 ? 'cmake-gui.exe' : 'ccmake';
 
@@ -362,8 +314,11 @@ function parseArgs(argv) {
     lib: null,
     exp: null,
     platform: null,
-    wasi: null,
+    toolchain: null,
+    generator: null,
+    multi: false,
     arch: null,
+    wasi: null,
     cmd: null,
     args: []
   };
@@ -441,13 +396,6 @@ function parseArgs(argv) {
         break;
       }
 
-      case '-l':
-      case '--location': {
-        process.stdout.write(MODULE_PATH + '\n');
-        process.exit(0);
-        break;
-      }
-
       case '-f':
       case '--fallback': {
         options.fallback = true;
@@ -469,12 +417,6 @@ function parseArgs(argv) {
       case '-p':
       case '--production': {
         options.production = true;
-        break;
-      }
-
-      case '-s':
-      case '--strip': {
-        options.strip = true;
         break;
       }
 
@@ -543,22 +485,34 @@ function parseArgs(argv) {
 
       case '-W':
       case '--wasm': {
-        if (WIN32)
-          throw new Error('WASM not supported on Windows.');
-
         options.platform = 'wasm';
+        break;
+      }
+
+      case '--toolchain': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.platform = 'generic';
+        options.toolchain = path.resolve(next);
+
+        if (!fs.existsSync(options.toolchain))
+          throw new Error(`Invalid toolchain path: '${next}'.`);
+
+        i += 1;
 
         break;
       }
 
-      case '--wasi-sdk': {
+      case '-G':
+      case '--gen': {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
 
-        options.wasi = path.resolve(next);
-
-        if (!fs.existsSync(options.wasi))
-          throw new Error(`Invalid wasi-sdk path: '${next}'.`);
+        options.generator = next;
+        options.multi = next.startsWith('Visual Studio')
+                     || next === 'Ninja Multi-Config'
+                     || next === 'Xcode';
 
         i += 1;
 
@@ -596,6 +550,20 @@ function parseArgs(argv) {
         break;
       }
 
+      case '--wasi-sdk': {
+        if (!next || next[0] === '-')
+          throw new Error(`Invalid option for: ${arg}.`);
+
+        options.wasi = path.resolve(next);
+
+        if (!fs.existsSync(options.wasi))
+          throw new Error(`Invalid wasi-sdk path: '${next}'.`);
+
+        i += 1;
+
+        break;
+      }
+
       case '-h':
       case '--help': {
         process.stdout.write(HELP + '\n');
@@ -627,8 +595,17 @@ function parseArgs(argv) {
   if (!options.platform)
     options.platform = process.platform;
 
+  if (!options.generator) {
+    if (options.platform === 'win32')
+      options.multi = true;
+    else
+      options.generator = WIN32 ? 'NMake Makefiles' : 'Unix Makefiles';
+  }
+
   if (!options.arch) {
-    if (options.platform === 'mingw')
+    if (options.platform === 'generic')
+      options.arch = 'unknown';
+    else if (options.platform === 'mingw')
       options.arch = 'x64';
     else if (options.platform === 'wasm')
       options.arch = 'wasm32';
@@ -637,7 +614,9 @@ function parseArgs(argv) {
   }
 
   if (!options.bin) {
-    if (options.platform === 'mingw')
+    if (options.platform === 'generic')
+      options.bin = 'node';
+    else if (options.platform === 'mingw')
       options.bin = 'node.exe';
     else if (options.platform === 'wasm')
       options.bin = 'node.wasm';
@@ -646,16 +625,8 @@ function parseArgs(argv) {
   }
 
   if (!options.wasi) {
-    if (options.platform === 'wasm') {
-      for (const prefix of UNIX_PREFIXES) {
-        const file = path.join(prefix, 'wasi-sdk');
-
-        if (fs.existsSync(file)) {
-          options.wasi = file;
-          break;
-        }
-      }
-    }
+    if (options.platform === 'wasm')
+      options.wasi = findWASI();
   }
 
   if (options.platform === 'win32') {
@@ -675,15 +646,15 @@ function parseArgs(argv) {
       throw new Error(`Invalid architecture: '${options.arch}'.`);
 
     if (!hasExecutable(`${prefix}-w64-mingw32-cc`))
-      throw new Error(`${prefix}-w64-mingw32 not found.`);
+      throw new Error(`${prefix}-w64-mingw32 toolchain not found.`);
   }
 
   if (options.platform === 'wasm') {
     if (options.arch !== 'wasm32' && options.arch !== 'wasm64')
       throw new Error(`Invalid architecture: '${options.arch}'.`);
 
-    if (!options.wasi)
-      throw new Error('wasi-sdk not found.');
+    if (options.arch === 'wasm64')
+      throw new Error('wasm64 not yet supported.');
   }
 
   return options;
@@ -700,7 +671,6 @@ const commands = {
   clear,
   configure,
   build,
-  strip,
   clean,
   reconfigure,
   rebuild,
@@ -718,13 +688,8 @@ async function main(argv) {
 
     runGYP(options.gyp, options.cmd, options.root);
 
-    if (options.cmd.endsWith('build')) {
-      if (options.production)
-        await clean(options, []);
-
-      if (options.strip)
-        await strip(options, []);
-    }
+    if (options.production && options.cmd.endsWith('build'))
+      await clean(options, []);
 
     return;
   }
@@ -947,15 +912,27 @@ function getCacheDirectory() {
 }
 
 function getBuildDirectory(options) {
-  if (options.platform === 'win32')
+  if (options.multi)
     return path.join(options.root, 'build');
 
   return path.join(options.root, 'build', options.config);
 }
 
+function findBuildDirectory(options) {
+  const build = path.join(options.root, 'build');
+  const multiCache = path.join(build, 'CMakeCache.txt');
+  const singleCache = path.join(build, options.config, 'CMakeCache.txt');
+
+  if (fs.existsSync(multiCache))
+    return [build, true];
+
+  if (fs.existsSync(singleCache))
+    return [path.join(build, options.config), false];
+
+  throw new Error('Project is not configured.');
+}
+
 function prependModulePath(args) {
-  // See: https://github.com/chjj/cmake-node/issues/1
-  const mpath = WIN32 ? MODULE_PATH.replace(/\\/g, '/') : MODULE_PATH;
   const out = ['-D', ''];
 
   let paths = null;
@@ -983,9 +960,9 @@ function prependModulePath(args) {
   }
 
   if (paths)
-    paths = `${mpath};${paths}`;
+    paths = `${unixify(MODULE_PATH)};${paths}`;
   else
-    paths = mpath;
+    paths = unixify(MODULE_PATH);
 
   out[1] = `CMAKE_MODULE_PATH=${paths}`;
 
@@ -1050,6 +1027,20 @@ function shouldFallback(options) {
       || !hasExecutable(options.cmake);
 }
 
+function windowsPrefixes() {
+  const LOCALAPPDATA = path.resolve(os.homedir(), 'AppData', 'Local');
+  const APPDATA = path.resolve(os.homedir(), 'AppData', 'Roaming');
+  const C = process.env.SYSTEMDRIVE || process.env.HOMEDRIVE || 'C:';
+
+  return [
+    process.env.LOCALAPPDATA || LOCALAPPDATA,
+    process.env.APPDATA || APPDATA,
+    process.env.PROGRAMFILES || `${C}\\Program Files`,
+    process.env['PROGRAMFILES(X86)'] || `${C}\\Program Files (x86)`,
+    `${C}\\`
+  ];
+}
+
 function findCMake() {
   const cmake = WIN32 ? 'cmake.exe' : 'cmake';
 
@@ -1059,14 +1050,8 @@ function findCMake() {
   const paths = [];
 
   if (WIN32) {
-    for (const prefix of [process.env.LOCALAPPDATA,
-                          process.env.PROGRAMFILES,
-                          process.env['PROGRAMFILES(X86)']]) {
-      if (!prefix)
-        continue;
-
+    for (const prefix of windowsPrefixes())
       paths.push(path.join(prefix, 'CMake', 'bin', 'cmake.exe'));
-    }
   } else {
     for (const prefix of UNIX_PREFIXES)
       paths.push(path.join(prefix, 'bin', 'cmake'));
@@ -1169,14 +1154,14 @@ function findLib(cmake, arch) {
   const file = path.join(dir, 'CMakeLists.txt');
   const args = [];
 
+  if (arch !== process.arch)
+    args.push('-A', MSVC_ARCHES[arch]);
+
   remove(dir);
   mkdirp(dir, 0o755);
 
   fs.writeFileSync(file, 'project(x LANGUAGES C)\n'
                        + 'message(STATUS "@@@CC=${CMAKE_C_COMPILER}@@@")\n');
-
-  if (arch !== process.arch)
-    args.push('-A', MSVC_ARCHES[arch]);
 
   let result;
   try {
@@ -1204,11 +1189,34 @@ function findLib(cmake, arch) {
   return lib;
 }
 
+function findWASI() {
+  const paths = [];
+
+  if (WIN32) {
+    for (const prefix of windowsPrefixes())
+      paths.push(path.join(prefix, 'wasi-sdk'));
+  } else {
+    for (const prefix of UNIX_PREFIXES)
+      paths.push(path.join(prefix, 'wasi-sdk'));
+  }
+
+  for (const path_ of paths) {
+    if (fs.existsSync(path_))
+      return path_;
+  }
+
+  throw new Error('wasi-sdk not found.');
+}
+
 function isPath(str) {
   if (WIN32 && str.includes('/'))
     return true;
 
   return str.includes(path.sep);
+}
+
+function unixify(path_) {
+  return WIN32 ? path_.replace(/\\/g, '/') : path_;
 }
 
 function safeStat(path_) {
