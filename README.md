@@ -127,8 +127,8 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     --node-def <name>    path to node.def (win32 only)
     --node-lib <path>    path to node.lib (win32 only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
-    -M, --mingw          cross-compile for win32 using mingw
-    -W, --wasm           cross-compile for wasm using wasi-sdk
+    --mingw              cross-compile for win32 using mingw
+    --wasm               cross-compile for wasm using wasi-sdk
     --toolchain <file>   path to toolchain file
     -G, --gen <name>     generator name (see cmake --help)
     -A, --arch <arch>    select win32 arch (ia32, x64, arm, arm64)
