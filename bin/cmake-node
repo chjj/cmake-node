@@ -25,7 +25,7 @@ const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_TOOLCHAIN = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
 const NODE_DEF = path.resolve(__dirname, '..', 'etc', 'node.def');
-const WASI_RUN = path.join(__dirname, '..', 'scripts', 'wasi-run');
+const WASI_RUN = path.resolve(__dirname, '..', 'scripts', 'wasi-run');
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const WIN32 = process.platform === 'win32';
 
@@ -353,7 +353,10 @@ function parseArgs(argv) {
         if (!next || next[0] === '-')
           throw new Error(`Invalid option for: ${arg}.`);
 
-        options.root = next;
+        options.root = path.resolve(next);
+
+        if (!fs.existsSync(options.root))
+          throw new Error(`Invalid root path: '${next}'.`);
 
         i += 1;
 
@@ -1189,11 +1192,13 @@ function mkdirp(dir, mode) {
  * Execute
  */
 
-main(process.argv).catch((err) => {
-  if (err.code === 'ENOENT')
-    process.stderr.write(`File not found: ${err.path}\n`);
+try {
+  main(process.argv);
+} catch (e) {
+  if (e.code === 'ENOENT')
+    process.stderr.write(`File not found: ${e.path}\n`);
   else
-    process.stderr.write(err.message + '\n');
+    process.stderr.write(e.message + '\n');
 
   process.exit(1);
-});
+}
