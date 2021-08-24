@@ -21,12 +21,13 @@ const path = require('path');
 
 const VERSION = '0.1.1';
 const NAPI_VERSION = 8;
+const NODE_PATH = path.resolve(process.execPath);
+const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
 const NODE_BINARY = path.basename(process.execPath);
 const MODULE_PATH = path.resolve(__dirname, '..', 'cmake');
 const MINGW_TOOLCHAIN = path.join(MODULE_PATH, 'Toolchain', 'MinGW.cmake');
 const NODE_DEF = path.resolve(__dirname, '..', 'etc', 'node.def');
-const WASI_RUN = path.resolve(__dirname, '..', 'scripts', 'wasi-run');
-const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
+const WASI_JS = path.resolve(__dirname, '..', 'scripts', 'wasi.js');
 const WIN32 = process.platform === 'win32';
 
 const IGNORE_EXTS = [
@@ -81,6 +82,23 @@ const DLLTOOL_MACHINES = {
   'arm': 'arm',
   'arm64': 'arm64'
 };
+
+const WASI_FLAGS = [];
+
+if (process.allowedNodeEnvironmentFlags) {
+  for (const flag of ['--experimental-wasm-bigint',
+                      '--experimental-wasi-unstable-preview1']) {
+    if (process.allowedNodeEnvironmentFlags.has(flag))
+      WASI_FLAGS.push(flag);
+  }
+}
+
+const WASI_RUN = [
+  NODE_PATH,
+  '--no-warnings',
+  ...WASI_FLAGS,
+  WASI_JS
+].join(';');
 
 const HELP = `
   Usage: cmake-node [options] [command] -- [cmake args]
@@ -198,12 +216,8 @@ function configure(options, args) {
                                                    'wasi-sdk.cmake');
 
     argv.push('-D', `CMAKE_TOOLCHAIN_FILE=${unixify(WASI_TOOLCHAIN)}`);
+    argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${unixify(WASI_RUN)}`);
     argv.push('-D', `WASI_SDK_PREFIX=${unixify(options.wasi)}`);
-
-    if (!WIN32) {
-      argv.push('-D', `CMAKE_CROSSCOMPILING_EMULATOR=${WASI_RUN}`);
-      process.env.NODEJS = process.execPath;
-    }
   }
 
   argv.push(...prependModulePath(args));

@@ -10,7 +10,7 @@ const fs = require('fs');
 const {WASI} = require('wasi');
 
 if (process.argv.length < 3) {
-  console.error('Usage: $ wasi-run [file] [args]');
+  console.error('Usage: $ node wasi.js [file] [args]');
   process.exit(1);
 }
 
