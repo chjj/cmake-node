@@ -479,6 +479,7 @@ function parseArgs(argv) {
           throw new Error('MinGW not supported on Windows.');
 
         options.platform = 'mingw';
+        options.toolchain = null;
 
         break;
       }
@@ -486,6 +487,7 @@ function parseArgs(argv) {
       case '-W':
       case '--wasm': {
         options.platform = 'wasm';
+        options.toolchain = null;
         break;
       }
 
