@@ -204,7 +204,14 @@ async function configure(options, args) {
       '-D', `CMAKE_BUILD_TYPE=${options.config}`
     ];
 
-    if (options.platform === 'mingw') {
+    if (options.platform === 'aix' || options.platform === 'os390') {
+      const NODE_EXP = options.exp || getNodeExp(options);
+
+      if (options.platform === 'aix')
+        argv.push('-D', `NODE_ARCH=${options.arch}`);
+
+      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
+    } else if (options.platform === 'mingw') {
       const MINGW_ARCH = MINGW_PREFIXES[options.arch];
       const NODE_LIB = options.lib || getMingwLib(options);
 
@@ -222,13 +229,6 @@ async function configure(options, args) {
       argv.push('-D', `WASI_SDK_PREFIX=${options.wasi}`);
 
       process.env.NODEJS = process.execPath;
-    } else if (options.platform === 'aix' || options.platform === 'os390') {
-      const NODE_EXP = options.exp || getNodeExp(options);
-
-      if (options.platform === 'aix')
-        argv.push('-D', `NODE_ARCH=${options.arch}`);
-
-      argv.push('-D', `NODE_EXP=${NODE_EXP}`);
     }
 
     argv.push(...args);
@@ -258,13 +258,8 @@ async function build(options, args) {
     await strip(options, []);
 }
 
-async function strip(options) {
+async function strip(options, args) {
   let stripper, extension;
-
-  for (const arg of options.args) {
-    if (arg.includes('CMAKE_TOOLCHAIN_FILE='))
-      throw new Error('Cannot strip when cross-compiling.');
-  }
 
   switch (options.platform) {
     case 'win32':
@@ -797,9 +792,6 @@ async function getWin32Lib(options) {
                                `/MACHINE:${machine}`]);
 
   if (!result) {
-    if (base !== 'node')
-      throw new Error(`Could not create ${name}.`);
-
     console.error('WARNING: Could not create %s.', name);
 
     // Try to download the import library
@@ -847,8 +839,13 @@ async function getNodeLib(options) {
   const name = `node-${version}-${options.arch}.lib`;
   const file = path.join(getCacheDirectory(), name);
 
-  if (!fs.existsSync(file))
+  if (!fs.existsSync(file)) {
+    console.log('Downloading %s...', url);
+
     await download(url, file);
+
+    console.log('Finished downloading %s.', file);
+  }
 
   return file;
 }
@@ -1392,8 +1389,6 @@ function _download(url, file, resolve, reject) {
     path: parsed.path,
     agent: false
   };
-
-  console.log('Downloading %s...', url);
 
   mkdirp(path.dirname(file), 0o755);
 
