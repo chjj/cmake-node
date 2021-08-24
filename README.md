@@ -82,21 +82,6 @@ $ cmake-node rebuild --production
 
 It is recommended to put this in your package.json's `install` script.
 
-## Fallback Mode (for node-gyp)
-
-node-gyp is _the_ build system for node.js. To cope with this unfortunate
-reality, and to ease transition away from node-gyp, cmake-node offers a
-fallback option for users who are willing to also provide a binding.gyp file.
-
-``` sh
-$ cmake-node rebuild --fallback
-```
-
-The above command will fall back to node-gyp if CMake is not installed on the
-system (with limited support for cmake-node command line flags). cmake-node
-accomplishes this by checking for usual global install locations for node-gyp
-(this includes checking for npm's bundled node-gyp).
-
 ## MinGW Support
 
 cmake-node allows native modules to be cross-compiled for win32 using the mingw
@@ -138,8 +123,6 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
-    -f, --fallback       fall back to node-gyp if cmake is not found
-    -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)

@@ -37,15 +37,6 @@ const IGNORE_EXTS = [
   '.wasm'
 ];
 
-const GYP_COMMANDS = [
-  'build',
-  'clean',
-  'configure',
-  'reconfigure',
-  'rebuild',
-  'install'
-];
-
 const UNIX_PREFIXES = [
   NODE_PREFIX,
   '/usr',
@@ -110,8 +101,6 @@ const HELP = `
     -C, --cmake <path>   path to cmake binary (default: cmake{,.exe})
     -d, --dist <url>     node.js dist url (windows only)
     -r, --root <path>    path to root directory (default: .)
-    -f, --fallback       fall back to node-gyp if cmake is not found
-    -g, --gyp <path>     path to node-gyp binary (default: node-gyp{,.cmd})
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (windows only)
     --node-def <name>    path to node.def (windows only)
@@ -306,9 +295,7 @@ function parseArgs(argv) {
     cmake: findCMake(),
     dist: 'https://nodejs.org/dist',
     root: '.',
-    fallback: false,
     production: false,
-    gyp: null,
     bin: null,
     def: NODE_DEF,
     lib: null,
@@ -390,24 +377,6 @@ function parseArgs(argv) {
           throw new Error(`Invalid option for: ${arg}.`);
 
         options.root = next;
-
-        i += 1;
-
-        break;
-      }
-
-      case '-f':
-      case '--fallback': {
-        options.fallback = true;
-        break;
-      }
-
-      case '-g':
-      case '--gyp': {
-        if (!next || next[0] === '-')
-          throw new Error(`Invalid option for: ${arg}.`);
-
-        options.gyp = next;
 
         i += 1;
 
@@ -681,20 +650,6 @@ const commands = {
 
 async function main(argv) {
   const options = parseArgs(argv);
-
-  if (shouldFallback(options)) {
-    if (options.production && options.cmd === 'clean') {
-      await clean(options, []);
-      return;
-    }
-
-    runGYP(options.gyp, options.cmd, options.root);
-
-    if (options.production && options.cmd.endsWith('build'))
-      await clean(options, []);
-
-    return;
-  }
 
   if (!hasExecutable(options.cmake))
     throw new Error(`CMake not available (${options.cmake}).`);
@@ -975,10 +930,6 @@ function isCMakeRoot(root) {
   return fs.existsSync(path.join(root, 'CMakeLists.txt'));
 }
 
-function isGYPRoot(root) {
-  return fs.existsSync(path.join(root, 'binding.gyp'));
-}
-
 function exec(file, args, cwd = '.', windowsHide = true) {
   const result = cp.spawnSync(file, args, {
     cwd: path.resolve(cwd),
@@ -1013,20 +964,6 @@ function tryExec(file, args) {
 
 function hasExecutable(file) {
   return tryExec(file, ['--version']);
-}
-
-function shouldFallback(options) {
-  if (!options.fallback)
-    return false;
-
-  if (!GYP_COMMANDS.includes(options.cmd))
-    return false;
-
-  if (!isGYPRoot(options.root))
-    return false;
-
-  return !isCMakeRoot(options.root)
-      || !hasExecutable(options.cmake);
 }
 
 function windowsPrefixes() {
@@ -1065,89 +1002,6 @@ function findCMake() {
   }
 
   return cmake;
-}
-
-function findGYP(root) {
-  const gyp = WIN32 ? 'node-gyp.cmd' : 'node-gyp';
-
-  if (hasExecutable(gyp))
-    return gyp;
-
-  const paths = [];
-
-  if (WIN32) {
-    let {APPDATA} = process.env;
-
-    if (!APPDATA)
-      APPDATA = path.resolve(os.homedir(), 'AppData', 'Roaming');
-
-    paths.push(path.resolve(process.execPath,
-                            '..',
-                            'node_modules',
-                            'npm',
-                            'node_modules',
-                            'node-gyp',
-                            'bin',
-                            'node-gyp.js'));
-
-    paths.push(path.resolve(APPDATA,
-                            'npm',
-                            'node_modules',
-                            'node-gyp',
-                            'bin',
-                            'node-gyp.js'));
-  } else {
-    for (const prefix of UNIX_PREFIXES) {
-      const modules = path.join(prefix, 'lib', 'node_modules');
-
-      paths.push(path.join(modules,
-                           'node-gyp',
-                           'bin',
-                           'node-gyp.js'));
-
-      paths.push(path.join(modules,
-                           'npm',
-                           'node_modules',
-                           'node-gyp',
-                           'bin',
-                           'node-gyp.js'));
-    }
-  }
-
-  paths.push(path.resolve(root,
-                          'node_modules',
-                          'node-gyp',
-                          'bin',
-                          'node-gyp.js'));
-
-  for (const path_ of paths) {
-    if (fs.existsSync(path_))
-      return path_;
-  }
-
-  return gyp;
-}
-
-function runGYP(gyp, cmd, root) {
-  if (gyp == null)
-    gyp = findGYP(root);
-
-  if (cmd === 'reconfigure')
-    cmd = 'configure';
-
-  if (path.extname(gyp) === '.js') {
-    gyp = path.resolve(gyp);
-
-    if (!fs.existsSync(gyp))
-      throw new Error(`GYP not available (${gyp}).`);
-
-    exec(process.execPath, [gyp, cmd], root);
-  } else {
-    if (!hasExecutable(gyp))
-      throw new Error(`GYP not available (${gyp}).`);
-
-    exec(gyp, [cmd], root);
-  }
 }
 
 function findLib(cmake, arch) {
