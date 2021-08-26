@@ -745,12 +745,12 @@ function getNodeExp(options) {
   let name;
 
   if (options.platform === 'aix')
-    name = '/include/node/node.exp';
+    name = ['include', 'node', 'node.exp'];
   else
-    name = '/lib/libnode.x';
+    name = ['lib', 'libnode.x'];
 
   for (const prefix of UNIX_PREFIXES) {
-    const file = path.join(prefix, name);
+    const file = path.join(prefix, ...name);
 
     if (fs.existsSync(file))
       return file;
@@ -1004,9 +1004,7 @@ function findLib(cmake, arch) {
   if (!m)
     return null;
 
-  const cl = path.normalize(m[1]); // cl.exe
-  const bin = path.dirname(cl); // /path/to/msvc/bin
-  const lib = path.join(bin, 'lib.exe');
+  const lib = path.resolve(m[1], '..', 'lib.exe');
 
   if (!fs.existsSync(lib))
     return null;
