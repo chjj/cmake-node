@@ -151,20 +151,19 @@ function install(options, args) {
 }
 
 function list(options, args) {
-  const exts = ['.lib', '.exp', '.x'];
-
   let names;
+
   try {
     names = fs.readdirSync(getCacheDirectory());
   } catch (e) {
-    return;
+    if (e.code === 'ENOENT')
+      return;
+    throw e;
   }
 
   for (const name of names) {
-    const ext = path.extname(name);
-
-    if (exts.includes(ext))
-      console.log(name);
+    if (name.endsWith('.lib'))
+      process.stdout.write(`${name}\n`);
   }
 }
 
