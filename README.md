@@ -124,7 +124,7 @@ You can find a proof-of-concept WASM NAPI module [here][napi-module] (credit to
     -r, --root <path>    path to root directory (default: .)
     -p, --production     clean all files except for .node files
     --node-bin <name>    name of node binary (win32 only)
-    --node-def <name>    path to node.def (win32 only)
+    --node-def <path>    path to node.def (win32 only)
     --node-lib <path>    path to node.lib (win32 only)
     --node-exp <path>    path to node.exp/libnode.x (aix/zos only)
     --mingw              cross-compile for win32 using mingw
