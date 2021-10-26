@@ -19,7 +19,7 @@ const path = require('path');
  * Constants
  */
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 const NAPI_VERSION = 8;
 const NODE_PATH = path.resolve(process.execPath);
 const NODE_PREFIX = path.resolve(process.execPath, '..', '..');
